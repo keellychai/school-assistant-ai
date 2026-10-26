@@ -1,0 +1,228 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | SchoolSync AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+            <span class="brand-icon small-brand">S</span>
+            <span>SchoolSync <span class="brand-ai">AI</span></span>
+        </a>
+
+        <p class="nav-label">WORKSPACE</p>
+
+        <nav class="navigation">
+            <a class="nav-link active" href="{{ url_for('dashboard') }}">
+                <span>▦</span> Dashboard
+            </a>
+            <a class="nav-link" href="#assistant">
+                <span>✳</span> AI Assistant
+            </a>
+            <a class="nav-link" href="#schedules">
+                <span>▦</span> Schedules
+            </a>
+            <a class="nav-link" href="#announcements">
+                <span>◉</span> Announcements
+            </a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="help-card">
+                <div class="help-icon">?</div>
+                <strong>Need assistance?</strong>
+                <p>Find answers to your school-related questions.</p>
+                <a href="#assistant">Ask SchoolSync →</a>
+            </div>
+
+            <a class="nav-link logout-link" href="{{ url_for('index') }}">
+                <span>↪</span> Back to login
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="breadcrumb">Workspace <span>/</span> Dashboard</div>
+
+            <div class="user-profile">
+                <div class="avatar" id="studentAvatar">ST</div>
+                <div>
+                    <strong id="studentProfileName">Student</strong>
+                    <span>Student account</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <section class="welcome-section">
+                <div>
+                    <p class="eyebrow">STUDENT WORKSPACE</p>
+                    <h1>
+                        Good day,
+                        <span id="dashboardStudentName">Student</span>
+                        <span>✦</span>
+                    </h1>
+                    <p class="muted">Everything you need for school, in one place.</p>
+                </div>
+
+                <div class="date-chip">
+                    SchoolSync AI <span>●</span> Prototype
+                </div>
+            </section>
+
+            <section class="hero-card" id="assistant">
+                <div class="hero-copy">
+                    <span class="hero-tag">✳ AI-POWERED ASSISTANT</span>
+                    <h2>Your school information,<br>made simple.</h2>
+                    <p>Ask about schedules, school announcements, administrative services, and more.</p>
+                    <a class="hero-button" href="{{ url_for('chatbot') }}">
+                        Explore AI Assistant <span>→</span>
+                    </a>
+                </div>
+
+                <div class="hero-art" aria-hidden="true">
+                    <div class="orbit orbit-one"></div>
+                    <div class="orbit orbit-two"></div>
+                    <div class="ai-orb">✳</div>
+                    <div class="floating-card floating-one">✓ Verified information</div>
+                    <div class="floating-card floating-two">AI Assistant</div>
+                </div>
+            </section>
+
+            <section class="section-heading">
+                <div>
+                    <h2>Quick access</h2>
+                    <p class="muted">Go directly to the information you need.</p>
+                </div>
+            </section>
+
+            <section class="quick-grid">
+                <a class="quick-card" href="{{ url_for('chatbot') }}">
+                    <div class="quick-icon purple">✳</div>
+                    <h3>AI Assistant</h3>
+                    <p>Ask questions about school information.</p>
+                    <span class="card-arrow">↗</span>
+                </a>
+
+                <a class="quick-card" href="#schedules">
+                    <div class="quick-icon blue">▦</div>
+                    <h3>Schedules</h3>
+                    <p>Check exam dates and school activities.</p>
+                    <span class="card-arrow">↗</span>
+                </a>
+
+                <a class="quick-card" href="#announcements">
+                    <div class="quick-icon orange">◉</div>
+                    <h3>Announcements</h3>
+                    <p>Read the latest school notices.</p>
+                    <span class="card-arrow">↗</span>
+                </a>
+            </section>
+
+            <section class="information-grid">
+                <div class="content-panel" id="schedules">
+                    <div class="panel-heading">
+                        <div>
+                            <h2>Upcoming schedules</h2>
+                            <p class="muted">Sample school calendar</p>
+                        </div>
+                        <span class="panel-icon">▦</span>
+                    </div>
+
+                    <article class="schedule-item">
+                        <div class="calendar-date">
+                            <span>NOV</span>
+                            <strong>02</strong>
+                        </div>
+                        <div class="schedule-details">
+                            <strong>Flag Ceremony</strong>
+                            <p>07:00 AM · School field</p>
+                        </div>
+                        <span class="event-badge">Activity</span>
+                    </article>
+
+                    <article class="schedule-item">
+                        <div class="calendar-date">
+                            <span>NOV</span>
+                            <strong>12</strong>
+                        </div>
+                        <div class="schedule-details">
+                            <strong>Mathematics Examination</strong>
+                            <p>08:00–09:30 AM · Classrooms</p>
+                        </div>
+                        <span class="event-badge exam">Exam</span>
+                    </article>
+
+                    <article class="schedule-item">
+                        <div class="calendar-date">
+                            <span>NOV</span>
+                            <strong>13</strong>
+                        </div>
+                        <div class="schedule-details">
+                            <strong>Indonesian Examination</strong>
+                            <p>08:00–09:30 AM · Classrooms</p>
+                        </div>
+                        <span class="event-badge exam">Exam</span>
+                    </article>
+                </div>
+
+                <div class="content-panel" id="announcements">
+                    <div class="panel-heading">
+                        <div>
+                            <h2>Latest announcements</h2>
+                            <p class="muted">Sample school notices</p>
+                        </div>
+                        <span class="panel-icon">◉</span>
+                    </div>
+
+                    <article class="announcement-item">
+                        <div class="announcement-icon green">✓</div>
+                        <div>
+                            <strong>Science Club Registration</strong>
+                            <p>Registration closes on November 5, 2026.</p>
+                            <span class="announcement-category">Extracurricular</span>
+                        </div>
+                    </article>
+
+                    <article class="announcement-item">
+                        <div class="announcement-icon orange">!</div>
+                        <div>
+                            <strong>Library Card Renewal</strong>
+                            <p>Renewal is available until October 30, 2026.</p>
+                            <span class="announcement-category">Administration</span>
+                        </div>
+                    </article>
+
+                    <div class="simulation-notice">
+                        <span>ⓘ</span>
+                        All information shown is simulated sample data.
+                    </div>
+                </div>
+            </section>
+
+            <section class="chat-preview" id="chat-preview">
+                <div class="chat-preview-icon">✳</div>
+                <div>
+                    <h2>Have a question?</h2>
+                    <p class="muted">SchoolSync AI will help you find the right school information.</p>
+                </div>
+                <button class="primary-button" id="demoChatButton" type="button">
+                    Try the assistant →
+                </button>
+            </section>
+
+            <footer class="page-footer">
+                SchoolSync AI · AI-Based School Administration and Communication Assistant
+                <span>Academic prototype</span>
+            </footer>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

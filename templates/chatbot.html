@@ -1,0 +1,92 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant | SchoolSync AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dashboard-page">
+    <aside class="sidebar">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+            <span class="brand-icon small-brand">S</span>
+            <span>SchoolSync <span class="brand-ai">AI</span></span>
+        </a>
+
+        <p class="nav-label">WORKSPACE</p>
+        <nav class="navigation">
+            <a class="nav-link" href="{{ url_for('dashboard') }}"><span>▦</span> Dashboard</a>
+            <a class="nav-link active" href="{{ url_for('chatbot') }}"><span>✳</span> AI Assistant</a>
+            <a class="nav-link" href="{{ url_for('dashboard') }}#schedules"><span>▦</span> Schedules</a>
+            <a class="nav-link" href="{{ url_for('dashboard') }}#announcements"><span>◉</span> Announcements</a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="help-card">
+                <div class="help-icon">?</div>
+                <strong>Need assistance?</strong>
+                <p>Ask about schedules, announcements, and school administration.</p>
+            </div>
+            <a class="nav-link logout-link" href="{{ url_for('index') }}"><span>↪</span> Back to login</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="breadcrumb">Workspace <span>/</span> AI Assistant</div>
+            <div class="user-profile">
+                <div class="avatar">ST</div>
+                <div><strong>Student</strong><span>Prototype account</span></div>
+            </div>
+        </header>
+
+        <div class="chat-page-content">
+            <section class="chat-heading">
+                <p class="eyebrow">SCHOOL INFORMATION ASSISTANT</p>
+                <h1>AI School Assistant</h1>
+                <p class="muted">Ask questions and get answers from the school's available information.</p>
+            </section>
+
+            <section class="chat-window">
+                <div class="chat-status">
+                    <div class="chat-bot-icon">✳</div>
+                    <div>
+                        <strong>SchoolSync Assistant</strong>
+                        <span><i></i> Prototype · Simulated school data</span>
+                    </div>
+                    <button type="button" id="clearChatButton" class="clear-button">New conversation</button>
+                </div>
+
+                <div id="chatMessages" class="chat-messages" aria-live="polite">
+                    <div class="message-row assistant-row">
+                        <div class="message-avatar">✳</div>
+                        <div class="message-bubble">
+                            <p>Hello! I'm your SchoolSync AI Assistant.</p>
+                            <p>You can ask me about exam schedules, school announcements, and administrative procedures.</p>
+                            <span class="message-time">SchoolSync Assistant</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="suggestion-area">
+                    <span>TRY ASKING</span>
+                    <div class="suggestion-list">
+                        <button type="button" class="suggestion-chip">Kapan ujian Matematika kelas X?</button>
+                        <button type="button" class="suggestion-chip">Jam berapa kantor administrasi buka?</button>
+                        <button type="button" class="suggestion-chip">Kapan pendaftaran Klub Sains ditutup?</button>
+                    </div>
+                </div>
+
+                <form id="chatForm" class="chat-input-area">
+                    <textarea id="questionInput" rows="1" maxlength="500" placeholder="Ask about school information..." aria-label="Your question" required></textarea>
+                    <button type="submit" id="sendButton" class="send-button" aria-label="Send question">↑</button>
+                    <div class="input-disclaimer">Answers are based on simulated school data. Verify important information with school staff.</div>
+                </form>
+            </section>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

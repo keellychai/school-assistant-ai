@@ -1,0 +1,62 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | SchoolSync AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+    <main class="login-container">
+        <section class="login-brand">
+            <div class="brand-icon">S</div>
+            <p class="eyebrow">SCHOOL INFORMATION PLATFORM</p>
+            <h1>SchoolSync AI</h1>
+            <p class="login-description">
+                Your intelligent assistant for school information,
+                schedules, announcements, and administration.
+            </p>
+            <div class="login-note">
+                <span class="status-dot"></span>
+                School information, connected in one place
+            </div>
+        </section>
+
+        <section class="login-card">
+            <p class="eyebrow">WELCOME BACK</p>
+            <h2>Sign in to continue</h2>
+            <p class="muted">Access your school information dashboard.</p>
+
+            <div class="form-group">
+                <label for="studentName">Student name</label>
+                <input
+                    type="text"
+                    id="studentName"
+                    name="studentName"
+                    placeholder="Enter your name"
+                    required
+                >
+            </div>
+
+            <form id="loginForm">
+                <label for="email">Email address</label>
+                <input id="email" type="email" placeholder="student@school.edu" required>
+
+                <label for="password">Password</label>
+                <input id="password" type="password" placeholder="Enter your password" required>
+
+                <button class="primary-button full-button" type="submit">
+                    Continue to dashboard <span>→</span>
+                </button>
+            </form>
+
+            <p class="demo-note">
+                Prototype mode: authentication is not enabled yet.
+            </p>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
