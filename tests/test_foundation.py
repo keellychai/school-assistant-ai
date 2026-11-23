@@ -20,6 +20,8 @@ from app.models import (
 )
 from app.seeds import create_admin, seed_all
 
+from .conftest import ask
+
 
 def count(model):
     return db.session.scalar(select(func.count()).select_from(model))
@@ -148,33 +150,34 @@ def test_pages_render(user_client, path):
     assert b'name="csrf-token"' in response.data
 
 
-def test_ask_answers_from_database(user_client):
-    client = user_client
-    response = client.post("/api/ask", json={"question": "Kapan ujian matematika kelas X?"})
-    data = response.get_json()
-    assert response.status_code == 200
-    assert data["source"]["id"] == "SCH001"
-    assert data["needs_review"] is False
+def _knowledge_only():
+    """Turn configured questions off so the knowledge base answers."""
+    for question in db.session.scalars(select(ConfiguredQuestion)):
+        question.is_enabled = False
+    db.session.commit()
 
 
-def test_ask_reflects_database_changes(app, user_client):
-    client = user_client
+def test_chat_answers_from_knowledge_in_database(user_client):
+    _knowledge_only()
+    reply = ask(user_client, "Kapan ujian matematika kelas X?")
+    assert reply["resolved_by"] == "knowledge" and reply["needs_review"] is False
+
+
+def test_chat_reflects_database_changes(app, user_client):
+    _knowledge_only()
     entry = db.session.scalar(select(KnowledgeEntry).where(KnowledgeEntry.external_ref == "SCH001"))
     entry.content_markdown = "Ujian Matematika dipindah ke 15 Desember 2026."
     db.session.commit()
-    data = client.post("/api/ask", json={"question": "Kapan ujian matematika?"}).get_json()
-    assert "15 Desember" in data["answer"]
+    assert "15 Desember" in ask(user_client, "Kapan ujian matematika?")["html"]
 
 
-def test_ask_unknown_question_uses_configured_fallback(app, user_client):
-    client = user_client
+def test_chat_unknown_question_uses_configured_fallback(app, user_client):
     AssistantSettings.get().fallback_answer = "Custom fallback"
     db.session.commit()
-    data = client.post("/api/ask", json={"question": "zzz qqq"}).get_json()
-    assert data["answer"] == "Custom fallback" and data["needs_review"] is True
+    reply = ask(user_client, "zzz qqq")
+    assert "Custom fallback" in reply["html"] and reply["needs_review"] is True
 
 
-def test_ask_validates_input(user_client):
-    client = user_client
-    assert client.post("/api/ask", json={"question": ""}).status_code == 400
-    assert client.post("/api/ask", json={"question": "x" * 501}).status_code == 400
+def test_chat_validates_input(user_client):
+    assert user_client.post("/api/chat/messages", json={"message": ""}).status_code == 422
+    assert user_client.post("/api/chat/messages", json={"message": "x" * 501}).status_code == 422

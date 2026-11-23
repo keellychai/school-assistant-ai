@@ -2,7 +2,6 @@ from flask import abort, render_template, request
 from ..auth.security import permission_required
 from ..extensions import db
 from ..models import ConfiguredQuestion, ConversationFlow, KnowledgeEntry, User
-from ..services import system_settings
 from . import bp
 from .navigation import ALL_ITEMS, nav_lookup, visible_navigation
 
@@ -14,8 +13,7 @@ def inject_layout():
         "admin_nav": visible_navigation(),
         "nav_section": section,
         "nav_item": item,
-        "branding": system_settings.branding(),
-        "timezone": system_settings.get("locale.timezone") or system_settings.DEFAULT_TIMEZONE,
+        # "branding" and "timezone" come from the app-wide context processor (app/__init__.py).
     }
 
 

@@ -10,7 +10,7 @@ from app.extensions import db
 from app.models import ActivityLog, KnowledgeCategory, KnowledgeEntry
 from app.services.documents import documents_dir
 
-from .conftest import login
+from .conftest import ask, login
 from .docs_util import make_docx, make_pdf
 
 API = "/api/admin/knowledge"
@@ -211,11 +211,10 @@ def test_match_tester_shows_hidden_candidates(admin_client):
 
 def test_chat_uses_new_entry_and_respects_visibility(admin_client):
     entry = create(admin_client)
-    answer = admin_client.post("/api/ask", json={"question": "Berapa biaya studi wisata?"}).get_json()
-    assert "Rp 350.000" in answer["answer"] and answer["source"]["id"] == "SCH012"
+    reply = ask(admin_client, "Berapa biaya studi wisata?")
+    assert "Rp 350.000" in reply["html"] and reply["source"]["title"] == "Biaya Studi Wisata"
     admin_client.patch(f"{API}/{entry['id']}", json={"is_published": False})
-    answer = admin_client.post("/api/ask", json={"question": "Berapa biaya studi wisata?"}).get_json()
-    assert "Rp 350.000" not in answer["answer"]
+    assert "Rp 350.000" not in ask(admin_client, "Berapa biaya studi wisata?")["html"]
 
 
 # --- Permissions & pages -------------------------------------------------------------------------

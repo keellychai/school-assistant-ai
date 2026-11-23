@@ -16,7 +16,7 @@ from app.models import (
 )
 from app.services.markdown_render import is_safe_url, render_markdown
 
-from .conftest import login
+from .conftest import ask, login
 
 API = "/api/admin/chat"
 
@@ -325,8 +325,7 @@ def test_flow_delete(admin_client):
 
 def test_fallback_answer_used_by_chat(admin_client):
     admin_client.put(f"{API}/fallback", json={"fallback_answer": "Coba tanyakan dengan kata lain."})
-    data = admin_client.post("/api/ask", json={"question": "zzz qqq"}).get_json()
-    assert data["answer"] == "Coba tanyakan dengan kata lain."
+    assert "Coba tanyakan dengan kata lain." in ask(admin_client, "zzz qqq")["html"]
 
 
 def test_fallback_cannot_be_empty(admin_client):

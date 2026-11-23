@@ -39,11 +39,19 @@ def create_app(config_name=None):
     from .admin import bp as admin_bp
     from .api.admin import bp as admin_api_bp
     from .api.me import bp as me_api_bp
+    from .api.chat import bp as chat_api_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
     app.register_blueprint(me_api_bp)
+    app.register_blueprint(chat_api_bp)
+
+    @app.context_processor
+    def _branding():
+        from .services import system_settings
+        return {"branding": system_settings.branding(),
+                "timezone": system_settings.get("locale.timezone") or system_settings.DEFAULT_TIMEZONE}
 
     from .auth.security import enforce_session_timeout
     app.before_request(enforce_session_timeout)

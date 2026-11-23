@@ -53,6 +53,13 @@ def make_user(app):
     return _make
 
 
+def ask(client, message, **extra):
+    """Send an AI Chat message; returns the assistant's reply JSON."""
+    response = client.post("/api/chat/messages", json={"message": message, **extra})
+    assert response.status_code == 201, response.get_json()
+    return response.get_json()["reply"]
+
+
 def login(client, email, password=PASSWORD, **extra):
     return client.post("/auth/login", data={"email": email, "password": password, **extra})
 

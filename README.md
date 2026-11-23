@@ -12,8 +12,10 @@ app/
   extensions.py      db, migrate, login_manager, csrf, limiter
   models/            SQLAlchemy models (users/RBAC, events, notifications, chat config,
                      knowledge, settings, chat history, activity logs)
-  services/          knowledge search, ML classifier, audit logging
-  main/              existing student pages + /api/ask
+  services/          chat engine, question matching, knowledge search, AI answers,
+                     ML classifier, settings, notifications, audit logging
+  api/               JSON APIs: admin/ (Admin Control Panel), chat.py (AI Chat), me.py (own account)
+  main/              student pages (dashboard, AI Chat) + public media
   seed_data/         sample content imported once by `flask seed`
   seeds.py, cli.py   `flask seed`, `flask create-admin`
   templates/, static/
@@ -77,6 +79,24 @@ Scheduled notifications and event reminders are delivered when they come due. An
 Email reminders need SMTP settings in `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
 `SMTP_FROM`, `SMTP_TLS`). Without them, email reminders are delivered in-app only.
 
+## AI Chat
+
+Students and staff use AI Chat at `/chatbot`. Each message is answered from the first source that fits:
+
+1. **Configured questions & answers** (Admin > Questions & answers): a clicked suggestion or follow-up,
+   or the best-matching question when its score reaches *Match strictness* (Assistant settings).
+2. **Knowledge base**: a matching published entry (when *Answer from the knowledge base* is on).
+3. **AI answer** (when *AI answers* are on): Claude answers using only relevant knowledge entries,
+   near-matching configured answers and upcoming events. If they don't cover the question it says so,
+   and the fallback is used instead of a guess.
+4. **Fallback answer**, flagged for review.
+
+Every message and reply is stored (`chat_sessions`, `chat_messages`) with how it was answered.
+
+To enable AI answers, put the key in `.env` under the variable named in Assistant settings
+(default `ANTHROPIC_API_KEY=...`), restart the server, then switch *AI answers* on. The key is only read
+on the server; it is never stored in the database or sent to the browser.
+
 ## Database
 
 Local development uses SQLite at `instance/schoolsync.db`. For Supabase/PostgreSQL, install
@@ -104,4 +124,4 @@ Local development uses SQLite at `instance/schoolsync.db`. For Supabase/PostgreS
 
 - Secrets (SECRET_KEY, AI API keys) live only in `.env` / server environment, never in the database or frontend.
 - Passwords are hashed with scrypt (Werkzeug). All POST requests require a CSRF token.
-- Login is rate-limited to 10 attempts per minute per IP; `/api/ask` to 30 per minute.
+- Login is rate-limited to 10 attempts per minute per IP; sending AI Chat messages to 20 per minute.

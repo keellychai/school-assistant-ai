@@ -5,12 +5,13 @@ from flask_login import current_user, login_required, login_user
 from sqlalchemy import func, select, update
 
 from ..extensions import db, limiter
-from ..models import ActivityLog, ChatSession, Notification, User, UserNotification
+from ..models import ActivityLog, ChatSession, Event, Notification, User, UserNotification
 from ..models.base import utcnow
 from ..services.audit import log_activity
 from ..services.markdown_render import render_markdown
 from ..services.notifications import dispatch_quietly
 from ..services.system_settings import password_min_length
+from ..services.timezone import to_local
 from .admin.schemas import PasswordChangeIn, ProfileIn
 from .admin.utils import ApiError, iso, parse_body, register_error_handlers
 
@@ -64,6 +65,27 @@ def mark_all_read():
         UserNotification.user_id == current_user.id, UserNotification.read_at.is_(None)).values(read_at=utcnow()))
     db.session.commit()
     return jsonify({"unread": 0})
+
+
+# --- School events (read-only, for the student dashboard) -------------------------------
+
+@bp.get("/events")
+def upcoming_events():
+    """Upcoming and ongoing events in the next N days (default 30), soonest first."""
+    from datetime import timedelta
+    from sqlalchemy import or_
+    days = min(max(request.args.get("days", 30, type=int), 1), 90)
+    now = utcnow()
+    events = db.session.scalars(
+        select(Event).where(Event.status.in_(("upcoming", "ongoing")),
+                            or_(Event.end_at >= now, Event.start_at >= now), Event.start_at < now + timedelta(days=days))
+        .order_by(Event.start_at).limit(20)).all()
+    return jsonify({"items": [{
+        "id": e.id, "title": e.title, "description": e.description, "location": e.location,
+        "category": e.category, "status": e.status, "all_day": e.all_day,
+        "start_at": iso(e.start_at), "end_at": iso(e.end_at),
+        "start_local": to_local(e.start_at).isoformat(timespec="minutes"),
+    } for e in events]})
 
 
 # --- Profile & password -------------------------------------------------------------

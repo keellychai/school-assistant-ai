@@ -1,22 +1,25 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ branding.language }}" style="--blue: {{ branding.primary_color }};">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Login | SchoolSync AI</title>
+    <title>Sign in | {{ branding.name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="login-page">
     <main class="login-container">
         <section class="login-brand">
-            <div class="brand-icon">S</div>
+            {% if branding.logo_url %}
+                <img class="brand-icon brand-logo" src="{{ branding.logo_url }}" alt="">
+            {% else %}
+                <div class="brand-icon" aria-hidden="true">{{ branding.name[:1] }}</div>
+            {% endif %}
             <p class="eyebrow">SCHOOL INFORMATION PLATFORM</p>
-            <h1>SchoolSync AI</h1>
+            <h1>{{ branding.name }}</h1>
             <p class="login-description">
-                Your intelligent assistant for school information,
-                schedules, announcements, and administration.
+                {{ branding.tagline or "Your intelligent assistant for school information, schedules, announcements, and administration." }}
             </p>
             <div class="login-note">
                 <span class="status-dot"></span>
@@ -61,7 +64,5 @@
             </p>
         </section>
     </main>
-
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>

@@ -168,8 +168,8 @@ def test_admin_api_returns_json_401_when_anonymous(client):
     assert response.status_code == 401 and response.get_json() == {"error": "Authentication required."}
 
 
-def test_ask_requires_login(client):
-    assert client.post("/api/ask", json={"question": "hi"}).status_code == 401
+def test_chat_requires_login(client):
+    assert client.post("/api/chat/messages", json={"message": "hi"}).status_code == 401
 
 
 def test_me_endpoint_lists_permissions(admin_client):

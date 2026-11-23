@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models import ActivityLog, AssistantSettings
 
-from .conftest import login
+from .conftest import ask, login
 
 API = "/api/admin/assistant"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -207,7 +207,8 @@ def test_content_manager_can_view_not_edit(client, make_user):
 
 def test_fallback_from_settings_used_by_chat(admin_client):
     admin_client.put(API, json=valid_body(fallback_answer="Silakan tanya dengan kata lain."))
-    assert admin_client.post("/api/ask", json={"question": "zzz qqq"}).get_json()["answer"] == "Silakan tanya dengan kata lain."
+    reply = ask(admin_client, "zzz qqq")
+    assert reply["resolved_by"] == "fallback" and "Silakan tanya dengan kata lain." in reply["html"]
 
 
 def test_page_renders(admin_client):
