@@ -1,0 +1,93 @@
+{
+  "_comment": "Initial sample content imported into the database by `flask seed`. After seeding, edit everything from the Admin Control Panel; this file is not read at runtime.",
+  "knowledge_categories": [
+    {"slug": "schedule", "name": "Jadwal", "description": "Jadwal ujian dan kegiatan sekolah"},
+    {"slug": "announcement", "name": "Pengumuman", "description": "Pengumuman sekolah"},
+    {"slug": "administration", "name": "Administrasi", "description": "Prosedur dan layanan administrasi"}
+  ],
+  "knowledge_entries": [
+    {"ref": "SCH001", "category": "schedule", "title": "Mathematics Examination - Grade X",
+     "keywords": ["matematika", "math", "ujian matematika"],
+     "content": "Ujian Matematika kelas X dilaksanakan pada 12 November 2026, pukul 08.00–09.30, di ruang kelas masing-masing."},
+    {"ref": "SCH002", "category": "schedule", "title": "Indonesian Examination - Grade X",
+     "keywords": ["bahasa indonesia", "ujian bahasa"],
+     "content": "Ujian Bahasa Indonesia kelas X dilaksanakan pada 13 November 2026, pukul 08.00–09.30, di ruang kelas masing-masing."},
+    {"ref": "SCH003", "category": "schedule", "title": "Flag Ceremony",
+     "keywords": ["upacara", "bendera"],
+     "content": "Upacara bendera dilaksanakan pada 2 November 2026 pukul 07.00 di lapangan sekolah."},
+    {"ref": "SCH004", "category": "schedule", "title": "School Clean-up Activity",
+     "keywords": ["kerja bakti", "bersih bersih", "sarung tangan"],
+     "content": "Kerja bakti sekolah dilaksanakan pada 6 November 2026 pukul 07.30 di halaman sekolah. Peserta membawa sarung tangan."},
+    {"ref": "SCH005", "category": "schedule", "title": "Study Tour - Grade XI-A",
+     "keywords": ["studi wisata", "study tour", "xi-a"],
+     "content": "Kegiatan studi wisata kelas XI-A dilaksanakan pada 20 November 2026. Peserta berkumpul pukul 06.30."},
+    {"ref": "SCH006", "category": "announcement", "title": "Library Card Renewal",
+     "keywords": ["kartu perpustakaan", "perpanjangan kartu", "perpanjang kartu"],
+     "content": "Perpanjangan kartu perpustakaan dibuka sampai 30 Oktober 2026 di kantor perpustakaan, pukul 08.00–14.00."},
+    {"ref": "SCH007", "category": "announcement", "title": "Science Club Registration",
+     "keywords": ["klub sains", "science club", "pendaftaran sains"],
+     "content": "Pendaftaran Klub Sains dibuka sampai 5 November 2026 di laboratorium sains, pukul 14.00–15.00."},
+    {"ref": "SCH008", "category": "announcement", "title": "Lost and Found",
+     "keywords": ["barang hilang", "botol minum", "botol biru"],
+     "content": "Botol minum biru ditemukan. Informasi dapat ditanyakan di kantor administrasi sampai 30 Oktober 2026."},
+    {"ref": "SCH009", "category": "administration", "title": "Administration Office Hours",
+     "keywords": ["kantor administrasi", "jam kantor", "jam administrasi"],
+     "content": "Kantor administrasi buka Senin–Jumat, pukul 07.00–15.00. Informasi jam operasional hari Sabtu belum tersedia."},
+    {"ref": "SCH010", "category": "administration", "title": "Late Arrival Procedure",
+     "keywords": ["terlambat", "datang terlambat", "telat sekolah"],
+     "content": "Siswa yang datang setelah pukul 07.15 harus melapor ke kantor administrasi."},
+    {"ref": "SCH011", "category": "administration", "title": "Study Tour Permission Form",
+     "keywords": ["formulir izin", "surat izin", "formulir studi wisata"],
+     "content": "Formulir izin studi wisata kelas XI-A harus diserahkan paling lambat 10 November 2026."}
+  ],
+  "events": [
+    {"title": "Ujian Matematika Kelas X", "category": "exam", "start": "2026-11-12T08:00", "end": "2026-11-12T09:30",
+     "location": "Ruang kelas masing-masing", "description": "Ujian Matematika untuk kelas X."},
+    {"title": "Ujian Bahasa Indonesia Kelas X", "category": "exam", "start": "2026-11-13T08:00", "end": "2026-11-13T09:30",
+     "location": "Ruang kelas masing-masing", "description": "Ujian Bahasa Indonesia untuk kelas X."},
+    {"title": "Upacara Bendera", "category": "ceremony", "start": "2026-11-02T07:00", "end": null,
+     "location": "Lapangan sekolah", "description": null},
+    {"title": "Kerja Bakti Sekolah", "category": "activity", "start": "2026-11-06T07:30", "end": null,
+     "location": "Halaman sekolah", "description": "Peserta membawa sarung tangan."},
+    {"title": "Studi Wisata Kelas XI-A", "category": "trip", "start": "2026-11-20T06:30", "end": null,
+     "location": null, "description": "Peserta berkumpul pukul 06.30."}
+  ],
+  "question_categories": [
+    {"slug": "jadwal", "name": "Jadwal", "order": 1},
+    {"slug": "pengumuman", "name": "Pengumuman", "order": 2},
+    {"slug": "administrasi", "name": "Administrasi", "order": 3},
+    {"slug": "business", "name": "Business", "order": 4}
+  ],
+  "questions": [
+    {"key": "math_exam", "category": "jadwal", "text": "Kapan ujian Matematika kelas X?", "suggested": true, "order": 1,
+     "keywords": ["ujian matematika", "matematika kelas x"],
+     "answer": "Ujian Matematika kelas X dilaksanakan pada **12 November 2026**, pukul 08.00–09.30, di ruang kelas masing-masing."},
+    {"key": "office_hours", "category": "administrasi", "text": "Jam berapa kantor administrasi buka?", "suggested": true, "order": 2,
+     "keywords": ["kantor administrasi", "jam kantor"],
+     "answer": "Kantor administrasi buka **Senin–Jumat, pukul 07.00–15.00**. Informasi jam operasional hari Sabtu belum tersedia."},
+    {"key": "science_club", "category": "pengumuman", "text": "Kapan pendaftaran Klub Sains ditutup?", "suggested": true, "order": 3,
+     "keywords": ["klub sains", "pendaftaran sains"],
+     "answer": "Pendaftaran Klub Sains dibuka sampai **5 November 2026** di laboratorium sains, pukul 14.00–15.00."},
+    {"key": "biz_schedule", "category": "business", "text": "How do I manage my business schedule?", "suggested": true, "order": 4,
+     "keywords": ["business schedule", "manage schedule"],
+     "answer": "You can manage your business schedule through the event management feature.",
+     "follow_ups": ["biz_create", "biz_edit", "biz_delete"]},
+    {"key": "biz_create", "category": "business", "text": "How do I create an event?", "suggested": false, "order": 5,
+     "keywords": ["create event", "new event"],
+     "answer": "Open **Events**, click **New event**, fill in the title, date, time and location, then click **Save**."},
+    {"key": "biz_edit", "category": "business", "text": "How do I edit an event?", "suggested": false, "order": 6,
+     "keywords": ["edit event", "change event"],
+     "answer": "Open **Events**, find the event in the list or calendar, click **Edit**, change the details and click **Save**."},
+    {"key": "biz_delete", "category": "business", "text": "How do I delete an event?", "suggested": false, "order": 7,
+     "keywords": ["delete event", "remove event"],
+     "answer": "Open **Events**, click the **⋯** menu on the event, choose **Delete** and confirm."}
+  ],
+  "flows": [
+    {"name": "Business schedule help", "description": "Guides the user from managing a schedule to creating, editing or deleting events.",
+     "entry": "biz_schedule", "children": ["biz_create", "biz_edit", "biz_delete"]}
+  ],
+  "answer_templates": [
+    {"name": "Info + contact admin", "description": "Short answer followed by a pointer to the admin office.",
+     "body": "{answer}\n\nUntuk informasi lebih lanjut, silakan hubungi kantor administrasi sekolah."}
+  ]
+}

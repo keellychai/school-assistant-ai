@@ -4,12 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Dashboard | SchoolSync AI</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="dashboard-page">
     <aside class="sidebar">
-        <a class="brand" href="{{ url_for('dashboard') }}">
+        <a class="brand" href="{{ url_for('main.dashboard') }}">
             <span class="brand-icon small-brand">S</span>
             <span>SchoolSync <span class="brand-ai">AI</span></span>
         </a>
@@ -17,7 +18,7 @@
         <p class="nav-label">WORKSPACE</p>
 
         <nav class="navigation">
-            <a class="nav-link active" href="{{ url_for('dashboard') }}">
+            <a class="nav-link active" href="{{ url_for('main.dashboard') }}">
                 <span>▦</span> Dashboard
             </a>
             <a class="nav-link" href="#assistant">
@@ -39,7 +40,7 @@
                 <a href="#assistant">Ask SchoolSync →</a>
             </div>
 
-            <a class="nav-link logout-link" href="{{ url_for('index') }}">
+            <a class="nav-link logout-link" href="{{ url_for('main.index') }}">
                 <span>↪</span> Back to login
             </a>
         </div>
@@ -80,7 +81,7 @@
                     <span class="hero-tag">✳ AI-POWERED ASSISTANT</span>
                     <h2>Your school information,<br>made simple.</h2>
                     <p>Ask about schedules, school announcements, administrative services, and more.</p>
-                    <a class="hero-button" href="{{ url_for('chatbot') }}">
+                    <a class="hero-button" href="{{ url_for('main.chatbot') }}">
                         Explore AI Assistant <span>→</span>
                     </a>
                 </div>
@@ -102,7 +103,7 @@
             </section>
 
             <section class="quick-grid">
-                <a class="quick-card" href="{{ url_for('chatbot') }}">
+                <a class="quick-card" href="{{ url_for('main.chatbot') }}">
                     <div class="quick-icon purple">✳</div>
                     <h3>AI Assistant</h3>
                     <p>Ask questions about school information.</p>
