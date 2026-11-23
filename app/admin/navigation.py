@@ -36,7 +36,7 @@ NAVIGATION = (
         NavItem("events", "/events", "Events", "calendar", "events.read",
                 "Create and manage events and schedules, with calendar and list views."),
         NavItem("notifications", "/notifications", "Notifications", "bell", "notifications.read",
-                "Announcements, scheduled notifications and event reminders.", 7),
+                "Announcements, scheduled notifications and event reminders."),
     )),
     NavSection("AI Assistant", (
         NavItem("questions", "/chat/questions", "Questions & answers", "help-circle", "chatconfig.read",

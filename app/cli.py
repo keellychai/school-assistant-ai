@@ -1,17 +1,54 @@
 """Custom `flask` commands: `flask seed` and `flask create-admin`."""
 
 import os
+import time
 
 import click
+from flask.cli import AppGroup
 from sqlalchemy import select
 
 from .extensions import db
 from .models import Role, User
 from .seeds import create_admin, seed_all
 from .services.audit import log_activity
+from .services.notifications import dispatch_due
+
+
+notifications_cli = AppGroup("notifications", help="Deliver scheduled notifications and event reminders.")
+
+
+@notifications_cli.command("dispatch")
+def dispatch_command():
+    """Deliver everything that is due, once (suitable for a scheduled task / cron)."""
+    stats = dispatch_due()
+    click.echo(", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in stats.items()))
+
+
+@notifications_cli.command("worker")
+@click.option("--interval", default=60, show_default=True, type=click.IntRange(10, 3600),
+              help="Seconds between checks.")
+def worker_command(interval):
+    """Keep delivering due notifications every INTERVAL seconds (Ctrl+C to stop)."""
+    click.echo(f"Notification worker started (every {interval}s). Press Ctrl+C to stop.")
+    try:
+        while True:
+            try:
+                stats = dispatch_due()
+                if stats["announcements"] or stats["reminders"] or stats["expired_reminders"]:
+                    click.echo(f"{time.strftime('%H:%M:%S')} delivered: {stats}")
+            except Exception as error:  # noqa: BLE001 - keep the worker alive; next run retries
+                db.session.rollback()
+                click.echo(f"{time.strftime('%H:%M:%S')} dispatch failed: {error}", err=True)
+            finally:
+                db.session.remove()
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        click.echo("Worker stopped.")
 
 
 def register_cli(app):
+    app.cli.add_command(notifications_cli)
+
     @app.cli.command("seed")
     @click.option("--no-sample", is_flag=True, help="Only roles, permissions and settings; skip sample content.")
     def seed_command(no_sample):

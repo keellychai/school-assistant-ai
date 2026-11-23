@@ -100,6 +100,18 @@
                 </nav>
 
                 <div class="topbar-actions">
+                    <div class="dropdown inbox" data-dropdown data-inbox>
+                        <button class="icon-button inbox-button" type="button" data-dropdown-toggle aria-haspopup="menu" aria-expanded="false" aria-label="Notifications">
+                            {{ icon("bell") }}<span class="inbox-count" hidden></span>
+                        </button>
+                        <div class="dropdown-menu inbox-menu" role="menu" hidden>
+                            <div class="inbox-header">
+                                <strong>Notifications</strong>
+                                <button class="link-button" type="button" data-inbox-read-all>Mark all read</button>
+                            </div>
+                            <div class="inbox-list" data-inbox-list><p class="inbox-empty">Loading…</p></div>
+                        </div>
+                    </div>
                     <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">
                         <span class="theme-icon-dark">{{ icon("moon") }}</span>
                         <span class="theme-icon-light">{{ icon("sun") }}</span>
@@ -143,6 +155,7 @@
     <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
 
     <script type="module" src="{{ url_for('static', filename='admin/js/layout.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='admin/js/inbox.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

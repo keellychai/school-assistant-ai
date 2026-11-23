@@ -423,6 +423,71 @@ class EventStatusIn(Strict):
         return value
 
 
+# --- Notifications ----------------------------------------------------------------------
+
+class NotificationIn(Strict):
+    """scheduled_at is LOCAL time ('YYYY-MM-DDTHH:MM'), required when delivery is 'schedule'."""
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+    type: str = "announcement"
+    audience: str = "all"
+    audience_role_id: int | None = None
+    audience_user_id: int | None = None
+    delivery: str = "now"            # now | schedule | draft
+    scheduled_at: str | None = None
+    event_id: int | None = None
+
+    @field_validator("type")
+    @classmethod
+    def _type(cls, value):
+        if value not in ("announcement", "system"):
+            raise ValueError("Choose announcement or system message.")
+        return value
+
+    @field_validator("audience")
+    @classmethod
+    def _audience(cls, value):
+        if value not in ("all", "role", "user"):
+            raise ValueError("Choose who receives it.")
+        return value
+
+    @field_validator("delivery")
+    @classmethod
+    def _delivery(cls, value):
+        if value not in ("now", "schedule", "draft"):
+            raise ValueError("Choose send now, schedule or save as draft.")
+        return value
+
+    def scheduled_local(self):
+        from datetime import datetime
+        return datetime.fromisoformat(self.scheduled_at).replace(second=0, microsecond=0) if self.scheduled_at else None
+
+    @model_validator(mode="after")
+    def _check(self):
+        errors = {}
+        if self.audience == "role" and not self.audience_role_id:
+            errors["audience_role_id"] = "Choose a role."
+        if self.audience == "user" and not self.audience_user_id:
+            errors["audience_user_id"] = "Choose a person."
+        self.scheduled_at = (self.scheduled_at or "").strip() or None
+        if self.delivery == "schedule":
+            if not self.scheduled_at:
+                errors["scheduled_at"] = "Choose when to send it."
+            else:
+                try:
+                    parsed = self.scheduled_local()
+                    if "+" in self.scheduled_at[10:] or self.scheduled_at.endswith("Z"):
+                        raise ValueError
+                    if not 2000 <= parsed.year <= 2100:
+                        raise ValueError
+                except ValueError:
+                    errors["scheduled_at"] = "Enter a valid date and time."
+        if errors:
+            raise FieldErrors(errors)
+        return self
+
+
 # --- Fallback -------------------------------------------------------------------
 
 class FallbackIn(Strict):

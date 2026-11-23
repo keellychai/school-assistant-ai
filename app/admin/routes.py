@@ -110,6 +110,12 @@ def events():
     return render_template("admin/events.html")
 
 
+@bp.route("/notifications")
+@permission_required("notifications.read")
+def notifications():
+    return render_template("admin/notifications.html")
+
+
 @bp.route("/assistant")
 @permission_required("assistant.read")
 def assistant():

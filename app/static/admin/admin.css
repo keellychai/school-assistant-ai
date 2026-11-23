@@ -706,6 +706,32 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .calendar-chip.is-all-day.status-completed, .calendar-chip.is-all-day.status-cancelled { color: var(--text-2); }
 .calendar-more { padding: 1px 6px; border: 0; background: none; color: var(--accent-text); font-size: 11.5px; font-weight: 600; text-align: left; cursor: pointer; }
 
+/* ---------- Notifications & inbox ---------- */
+
+.delivery-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 16px; font-size: 13px; color: var(--text-2); }
+.detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; font-size: 13px; }
+.detail-body { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+
+.inbox-button { position: relative; }
+.inbox-count {
+    position: absolute; top: 3px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+}
+.inbox-menu { width: min(380px, calc(100vw - 24px)); padding: 0; }
+.inbox-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.inbox-header .link-button { color: var(--accent-text); font-size: 12.5px; font-weight: 600; }
+.inbox-list { max-height: 420px; overflow-y: auto; padding: 6px; }
+.inbox-empty { padding: 22px 10px; color: var(--text-3); text-align: center; }
+.inbox-item { align-items: flex-start; gap: 10px; padding: 10px; }
+.inbox-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: transparent; }
+.inbox-item.is-unread .inbox-dot { background: var(--accent); }
+.inbox-item.is-unread strong { color: var(--text); }
+.inbox-text { display: grid; gap: 2px; min-width: 0; }
+.inbox-text strong { font-size: 13px; color: var(--text-2); }
+.inbox-text small { color: var(--text-3); font-size: 11.5px; }
+.inbox-body { color: var(--text-2); font-size: 12.5px; max-height: 2.9em; overflow: hidden; }
+.inbox-item.is-expanded .inbox-body { max-height: none; }
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1180px) {

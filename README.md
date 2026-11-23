@@ -62,6 +62,20 @@ python run.py                    # http://127.0.0.1:5000
 | Create another admin | `python -m flask create-admin` |
 | After changing a model | `python -m flask db migrate -m "describe change"` then `python -m flask db upgrade` |
 | Retrain the classifier | `python train_model.py` |
+| Deliver due notifications once | `python -m flask notifications dispatch` |
+| Keep delivering (separate terminal) | `python -m flask notifications worker` |
+
+## Notifications and reminders
+
+Scheduled notifications and event reminders are delivered when they come due. Any of these will do it:
+
+- `flask notifications worker`, running in its own terminal (checks every 60 seconds),
+- `flask notifications dispatch`, run every minute by Windows Task Scheduler or cron,
+- the **Process due now** button on the Notifications page,
+- automatically (at most every 30 seconds) whenever someone opens their inbox.
+
+Email reminders need SMTP settings in `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+`SMTP_FROM`, `SMTP_TLS`). Without them, email reminders are delivered in-app only.
 
 ## Database
 

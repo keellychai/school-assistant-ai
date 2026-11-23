@@ -38,10 +38,12 @@ def create_app(config_name=None):
     from .auth import bp as auth_bp
     from .admin import bp as admin_bp
     from .api.admin import bp as admin_api_bp
+    from .api.me import bp as me_api_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
+    app.register_blueprint(me_api_bp)
 
     from .cli import register_cli
     register_cli(app)

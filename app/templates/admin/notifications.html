@@ -1,0 +1,374 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("notifications.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Notifications</h1>
+        <p>Announcements to everyone, a role or one person, sent now or at a scheduled time, plus event reminders.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <button class="btn btn-secondary" type="button" id="dispatch-now">{{ icon("clock", 16) }}Process due now</button>
+        <button class="btn btn-primary" type="button" id="new-notification">{{ icon("plus", 16) }}New notification</button>
+    </div>
+    {% endif %}
+</div>
+
+<section class="grid grid-stats" aria-label="Notification numbers">
+    <article class="card stat-card"><div class="stat-icon">{{ icon("clock", 20) }}</div>
+        <div><p class="stat-label">Scheduled</p><p class="stat-value" data-stat="scheduled">–</p><p class="stat-hint">Waiting to be sent</p></div></article>
+    <article class="card stat-card"><div class="stat-icon">{{ icon("bell", 20) }}</div>
+        <div><p class="stat-label">Sent this week</p><p class="stat-value" data-stat="sent_last_7_days">–</p><p class="stat-hint">Last 7 days</p></div></article>
+    <article class="card stat-card"><div class="stat-icon">{{ icon("file-text", 20) }}</div>
+        <div><p class="stat-label">Drafts</p><p class="stat-value" data-stat="draft">–</p><p class="stat-hint">Not sent yet</p></div></article>
+    <article class="card stat-card"><div class="stat-icon">{{ icon("calendar", 20) }}</div>
+        <div><p class="stat-label">Event reminders</p><p class="stat-value" data-stat="pending_reminders">–</p><p class="stat-hint">Still to be sent</p></div></article>
+</section>
+
+<p class="delivery-status" id="delivery-status"></p>
+
+<div class="segmented" role="tablist" aria-label="Section" style="margin-bottom: 14px;">
+    <button type="button" role="tab" data-tab="notifications">{{ icon("bell", 16) }}Notifications</button>
+    <button type="button" role="tab" data-tab="reminders">{{ icon("calendar", 16) }}Upcoming event reminders</button>
+</div>
+
+<section class="card" id="notifications-table" aria-label="Notifications"></section>
+
+<section class="card" id="reminders-panel" hidden>
+    <div class="card-header">
+        <div><h2>Upcoming event reminders</h2><p>Reminders set on events that will be sent in the next 14 days. Change them on the event itself.</p></div>
+        <a class="card-link" href="{{ url_for('admin.events') }}">Open events</a>
+    </div>
+    <div id="reminders-list"></div>
+</section>
+
+<template id="notification-form">
+    <div class="field">
+        <label class="required" for="n-title">Title</label>
+        <input class="input" id="n-title" name="title" maxlength="200" placeholder="e.g. Jadwal ujian semester sudah tersedia">
+    </div>
+    <div class="field">
+        <label class="required" for="n-body">Message</label>
+        <textarea class="textarea" id="n-body" name="body" maxlength="5000" rows="5"></textarea>
+        <p class="hint">Markdown is supported: **bold**, lists, and [links](https://example.com).</p>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="n-type">Type</label>
+            <select class="select" id="n-type" name="type">
+                <option value="announcement">Announcement</option>
+                <option value="system">System message</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="n-event">Related event</label>
+            <select class="select" id="n-event" name="event_id" data-type="number"></select>
+        </div>
+    </div>
+    <div class="field">
+        <label for="n-audience">Send to</label>
+        <select class="select" id="n-audience" name="audience">
+            <option value="all">Everyone</option>
+            <option value="role">Everyone with a role</option>
+            <option value="user">One person</option>
+        </select>
+        <p class="hint" data-audience-count></p>
+    </div>
+    <div class="field" data-when="role">
+        <label class="required" for="n-role">Role</label>
+        <select class="select" id="n-role" name="audience_role_id" data-type="number"></select>
+    </div>
+    <div class="field" data-when="user">
+        <label class="required" for="n-user-search">Person</label>
+        <input class="input" id="n-user-search" type="search" placeholder="Type a name or email…" autocomplete="off">
+        <select class="select" name="audience_user_id" data-type="number" aria-label="Person" style="margin-top: 8px;"></select>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="n-delivery">Delivery</label>
+            <select class="select" id="n-delivery" name="delivery">
+                <option value="now">Send now</option>
+                <option value="schedule">Schedule for later</option>
+                <option value="draft">Save as draft</option>
+            </select>
+        </div>
+        <div class="field" data-when-delivery="schedule">
+            <label class="required" for="n-scheduled">Send at</label>
+            <input class="input" id="n-scheduled" name="scheduled_at" type="datetime-local">
+            <p class="hint">{{ timezone }} time.</p>
+        </div>
+    </div>
+</template>
+
+<template id="notification-detail">
+    <div class="detail-meta" data-meta></div>
+    <div class="prose detail-body" data-body></div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, debounce, formatDateTime, openFormModal, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const STATUS = { draft: ["Draft", ""], scheduled: ["Scheduled", "info"], sent: ["Sent", "success"], cancelled: ["Cancelled", "danger"] };
+    const TYPE = { announcement: "Announcement", system: "System", reminder: "Event reminder" };
+    const OFFSETS = { 0: "at start", 15: "15 min before", 30: "30 min before", 60: "1 hour before", 120: "2 hours before",
+                      1440: "1 day before", 2880: "2 days before", 10080: "1 week before" };
+    let options = null;
+
+    const params = () => new URLSearchParams(location.search);
+    function setParam(key, value) {
+        const p = params(); value ? p.set(key, value) : p.delete(key);
+        history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : ""));
+    }
+    // "...local" strings from the API are already in school time: format the date, keep the time as-is.
+    const showLocal = (local) => {
+        if (!local) return "—";
+        const [d, t] = local.split("T");
+        const date = new Date(d + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+        return `${date}, ${t}`;
+    };
+
+    // ---------- summary ----------
+
+    async function loadSummary() {
+        try {
+            const s = await api("/api/admin/notifications/summary");
+            document.querySelectorAll("[data-stat]").forEach((node) => { node.textContent = s[node.dataset.stat]; });
+            const last = s.last_dispatch;
+            document.getElementById("delivery-status").replaceChildren(
+                el("span", {}, last ? `Due items last checked ${relativeTime(last.at)}. ` : "Due items haven't been checked yet. "),
+                el("span", { class: "subtle" }, "Scheduled notifications and reminders are delivered when they come due (by the worker, or whenever someone opens their inbox). "),
+                s.email_configured ? badge("Email ready", "success") : badge("Email not configured: email reminders are delivered in-app", "warning"),
+            );
+        } catch (error) { toastError(error); }
+    }
+
+    // ---------- notifications table ----------
+
+    function deliveryCell(n) {
+        if (n.status === "scheduled") return el("span", { class: "nowrap" }, showLocal(n.scheduled_local));
+        if (n.status === "sent") return el("div", {},
+            el("div", { class: "nowrap", title: formatDateTime(n.sent_at) }, relativeTime(n.sent_at)),
+            el("div", { class: "cell-secondary" }, `${n.read}/${n.recipients} read`));
+        return el("span", { class: "subtle" }, "—");
+    }
+
+    const table = new DataTable(document.getElementById("notifications-table"), {
+        endpoint: "/api/admin/notifications",
+        searchPlaceholder: "Search title or message…",
+        filters: [
+            { name: "status", label: "Any status", options: Object.entries(STATUS).map(([value, [label]]) => ({ value, label })) },
+            { name: "type", label: "Announcements & system", options: Object.entries(TYPE).map(([value, label]) => ({ value, label })) },
+            { name: "audience", label: "Any audience", options: [{ value: "all", label: "Everyone" }, { value: "role", label: "A role" }, { value: "user", label: "One person" }] },
+        ],
+        columns: [
+            { key: "title", label: "Notification", className: "cell-main",
+              render: (n) => el("div", {}, el("button", { class: "link-button cell-primary", type: "button", onclick: () => openNotification(n) }, n.title),
+                  el("div", { class: "cell-secondary" }, TYPE[n.type] + (n.event ? ` · ${n.event.title}` : ""))) },
+            { key: "audience_label", label: "To" },
+            { key: "status", label: "Status", render: (n) => badge(...STATUS[n.status]) },
+            { key: "delivery", label: "Delivery", render: deliveryCell },
+        ],
+        rowActions: (n) => {
+            if (!CAN_WRITE) return [{ label: "View", onClick: () => openNotification(n) }];
+            return [
+                { label: n.editable ? "Edit" : "View", onClick: () => openNotification(n) },
+                ["draft", "scheduled"].includes(n.status) && { label: "Send now", onClick: () => sendNow(n) },
+                n.status === "scheduled" && { label: "Cancel schedule", onClick: () => cancel(n) },
+                n.type !== "reminder" && { label: "Duplicate", onClick: () => edit(n, { duplicate: true }) },
+                { label: "Delete", danger: true, onClick: () => remove(n) },
+            ];
+        },
+        empty: { title: "No notifications yet", text: CAN_WRITE ? "Send an announcement to everyone, a role, or one person." : "" },
+    });
+
+    // ---------- form ----------
+
+    async function ensureOptions() {
+        if (!options) options = await api("/api/admin/notifications/options");
+        return options;
+    }
+
+    function setupForm(form, n) {
+        fillSelect(form.elements.audience_role_id, options.roles, { placeholder: "Choose a role…", label: (r) => `${r.name} (${r.members})`, selected: n?.audience_role_id ?? "" });
+        fillSelect(form.elements.event_id, options.events, { placeholder: "None", label: (e) => `${e.title} — ${showLocal(e.start)}`, selected: n?.event?.id ?? "" });
+        if (n?.event && !options.events.some((e) => e.id === n.event.id)) {
+            form.elements.event_id.append(el("option", { value: n.event.id }, n.event.title));
+            form.elements.event_id.value = n.event.id;
+        }
+        const userSelect = form.elements.audience_user_id;
+        fillSelect(userSelect, n?.audience_user ? [n.audience_user] : [], { placeholder: "Search above, then choose…", label: (u) => `${u.name} <${u.email}>`, selected: n?.audience_user?.id ?? "" });
+        const search = form.querySelector("#n-user-search");
+        search.addEventListener("input", debounce(async () => {
+            try {
+                const people = await api("/api/admin/notifications/recipients", { params: { q: search.value.trim() } });
+                fillSelect(userSelect, people, { placeholder: people.length ? "Choose a person…" : "No matching people", label: (u) => `${u.name} <${u.email}>`, selected: "" });
+                if (people.length === 1) userSelect.value = people[0].id;
+            } catch (error) { toastError(error); }
+        }, 250));
+
+        const count = form.querySelector("[data-audience-count]");
+        const sync = () => {
+            const audience = form.elements.audience.value;
+            form.querySelectorAll("[data-when]").forEach((f) => { f.hidden = f.dataset.when !== audience; });
+            form.querySelectorAll("[data-when-delivery]").forEach((f) => { f.hidden = f.dataset.whenDelivery !== form.elements.delivery.value; });
+            const role = options.roles.find((r) => String(r.id) === form.elements.audience_role_id.value);
+            const people = (n) => (n === 1 ? "1 active person" : `${n} active people`);
+            count.textContent = audience === "all" ? `${people(options.everyone)} will receive it.`
+                : audience === "role" ? (role ? `${people(role.members)} with this role will receive it.` : "")
+                : "Only this person will receive it.";
+            form.querySelector("button[type=submit]").textContent =
+                { now: "Send now", schedule: "Schedule", draft: "Save draft" }[form.elements.delivery.value];
+        };
+        form.addEventListener("change", sync);
+        sync();
+    }
+
+    async function edit(n, { duplicate = false } = {}) {
+        try { await ensureOptions(); } catch (error) { return toastError(error); }
+        const editing = n && !duplicate;
+        const values = n ? {
+            title: duplicate ? `${n.title} (copy)` : n.title, body: n.body, type: n.type === "reminder" ? "announcement" : n.type,
+            audience: n.audience, delivery: n.status === "scheduled" && editing ? "schedule" : "draft",
+            scheduled_at: editing ? (n.scheduled_local || "") : "",
+        } : { audience: "all", delivery: "now", type: "announcement" };
+
+        const saved = await openFormModal({
+            title: editing ? "Edit notification" : (duplicate ? "Duplicate notification" : "New notification"),
+            template: "#notification-form", size: "lg", values,
+            onOpen: (form) => setupForm(form, n),
+            onSubmit: async (data) => {
+                if (data.delivery === "now" && !editing) {
+                    const label = data.audience === "all"
+                        ? (options.everyone === 1 ? "the 1 active person" : `all ${options.everyone} people`) : "the selected recipients";
+                    if (!await confirmDialog({ title: "Send this notification now?", message: `It will appear right away in the inbox of ${label}. Sent notifications can't be edited.`, confirmText: "Send now", danger: false })) {
+                        throw new Error("Not sent. You can change the delivery option or send it now.");
+                    }
+                }
+                return api(editing ? `/api/admin/notifications/${n.id}` : "/api/admin/notifications", { method: editing ? "PUT" : "POST", body: data });
+            },
+        });
+        if (saved && saved !== true) {
+            toast({ sent: `Sent to ${saved.recipients} people.`, scheduled: `Scheduled for ${showLocal(saved.scheduled_local)}.`,
+                    draft: "Draft saved.", cancelled: "Saved." }[saved.status]);
+            refresh();
+        }
+    }
+
+    async function showDetail(n) {
+        const detail = await api(`/api/admin/notifications/${n.id}`);
+        await openFormModal({
+            title: detail.title, template: "#notification-detail", submitText: "Close",
+            onOpen: (form) => {
+                form.querySelector("[data-body]").innerHTML = detail.body_html; // sanitised on the server
+                form.querySelector("[data-meta]").replaceChildren(
+                    badge(...STATUS[detail.status]), badge(TYPE[detail.type], "accent"),
+                    el("span", { class: "subtle" }, `To ${detail.audience_label}`),
+                    detail.sent_at ? el("span", { class: "subtle" }, `· sent ${formatDateTime(detail.sent_at)} · ${detail.read}/${detail.recipients} read`) : null,
+                    detail.created_by ? el("span", { class: "subtle" }, `· by ${detail.created_by}`) : null,
+                );
+                form.querySelector(".modal-footer .btn-secondary").hidden = true;
+            },
+            onSubmit: async () => true,
+        });
+    }
+
+    function openNotification(n) {
+        return n.editable && CAN_WRITE ? edit(n) : showDetail(n).catch(toastError);
+    }
+
+    async function sendNow(n) {
+        if (!await confirmDialog({ title: `Send “${n.title}” now?`, message: `It goes to ${n.audience_label} immediately and can't be edited afterwards.`, confirmText: "Send now", danger: false })) return;
+        try {
+            const sent = await api(`/api/admin/notifications/${n.id}/send`, { method: "POST" });
+            toast(`Sent to ${sent.recipients} people.`);
+            refresh();
+        } catch (error) { toastError(error); }
+    }
+
+    async function cancel(n) {
+        if (!await confirmDialog({ title: "Cancel this scheduled notification?", message: "It won't be sent. You can edit and reschedule it later.", confirmText: "Cancel schedule" })) return;
+        try {
+            await api(`/api/admin/notifications/${n.id}/cancel`, { method: "POST" });
+            toast("Schedule cancelled.");
+            refresh();
+        } catch (error) { toastError(error); }
+    }
+
+    async function remove(n) {
+        const message = n.status === "sent"
+            ? `It will also disappear from ${n.recipients} people's inboxes. This can't be undone.`
+            : "This can't be undone.";
+        if (!await confirmDialog({ title: `Delete “${n.title}”?`, message })) return;
+        try {
+            await api(`/api/admin/notifications/${n.id}`, { method: "DELETE" });
+            toast("Notification deleted.");
+            refresh();
+        } catch (error) { toastError(error); }
+    }
+
+    // ---------- reminders tab ----------
+
+    async function loadReminders() {
+        const box = document.getElementById("reminders-list");
+        try {
+            const { items } = await api("/api/admin/notifications/reminders");
+            if (!items.length) {
+                box.replaceChildren(el("div", { class: "table-state" }, el("strong", {}, "No reminders in the next 14 days"),
+                    el("p", {}, "Add reminders to an event in Events.")));
+                return;
+            }
+            box.replaceChildren(el("div", { class: "table-wrap" }, el("table", { class: "table responsive" },
+                el("thead", {}, el("tr", {}, ...["Sends at", "Event", "Event starts", "Channel"].map((h) => el("th", {}, h)))),
+                el("tbody", {}, ...items.map((r) => el("tr", {},
+                    el("td", { "data-label": "Sends at" }, el("span", { class: "nowrap" }, showLocal(r.fires_at)), r.overdue ? el("span", { class: "badge badge-warning", style: "margin-left:6px" }, "Due now") : null),
+                    el("td", { "data-label": "Event", class: "cell-primary" }, r.event.title, el("div", { class: "cell-secondary" }, OFFSETS[r.offset_minutes] || `${r.offset_minutes} min before`)),
+                    el("td", { "data-label": "Event starts" }, showLocal(r.event_start)),
+                    el("td", { "data-label": "Channel" }, badge(r.channel === "email" ? "Email" : "In-app")),
+                ))))));
+        } catch (error) { toastError(error); }
+    }
+
+    function showTab(tab) {
+        setParam("tab", tab === "reminders" ? "reminders" : "");
+        document.getElementById("notifications-table").hidden = tab === "reminders";
+        document.getElementById("reminders-panel").hidden = tab !== "reminders";
+        document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+        if (tab === "reminders") loadReminders();
+    }
+    document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+    function refresh() {
+        table.reload();
+        loadSummary();
+        if (!document.getElementById("reminders-panel").hidden) loadReminders();
+        window.dispatchEvent(new Event("inbox:refresh"));
+    }
+
+    document.getElementById("new-notification")?.addEventListener("click", () => edit(null));
+    document.getElementById("dispatch-now")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const s = await api("/api/admin/notifications/dispatch", { method: "POST" });
+            const parts = [];
+            if (s.announcements) parts.push(`${s.announcements} scheduled notification(s) sent`);
+            if (s.reminders) parts.push(`${s.reminders} event reminder(s) sent`);
+            if (s.expired_reminders) parts.push(`${s.expired_reminders} reminder(s) skipped because the event had already started`);
+            toast(parts.length ? parts.join(", ") + "." : "Nothing was due.");
+            refresh();
+        } catch (error) { toastError(error); }
+        finally { button.disabled = false; button.classList.remove("is-loading"); }
+    });
+
+    showTab(params().get("tab") === "reminders" ? "reminders" : "notifications");
+    loadSummary();
+</script>
+{% endblock %}
