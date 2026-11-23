@@ -161,12 +161,13 @@ export class DataTable {
         this.footer.hidden = true;
         this.stateBox.hidden = false;
         this.stateBox.className = `table-state${kind === "error" ? " is-error" : ""}`;
-        this.stateBox.replaceChildren(
+        // (replaceChildren would turn null into the text "null", so filter first)
+        this.stateBox.replaceChildren(...[
             el("div", { class: "state-icon" }, icon(kind === "error" ? "alert" : "inbox", 20)),
             el("strong", {}, title),
             text ? el("p", {}, text) : null,
             actionLabel ? el("button", { class: "btn btn-secondary btn-sm", type: "button", style: "margin-top:14px", onclick: action }, actionLabel) : null,
-        );
+        ].filter(Boolean));
     }
 
     _render(data) {

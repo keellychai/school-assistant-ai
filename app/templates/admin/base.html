@@ -89,7 +89,12 @@
                     <a href="{{ url_for('admin.index') }}">Admin</a>
                     {% if nav_section and nav_item and nav_item.endpoint != "index" %}
                         <span aria-hidden="true">/</span><span class="breadcrumb-muted">{{ nav_section.title }}</span>
-                        <span aria-hidden="true">/</span><span>{{ nav_item.label }}</span>
+                        <span aria-hidden="true">/</span>
+                        {% if request.endpoint == "admin." ~ nav_item.endpoint %}
+                            <span>{{ nav_item.label }}</span>
+                        {% else %}
+                            <a href="{{ url_for('admin.' ~ nav_item.endpoint) }}">{{ nav_item.label }}</a>
+                        {% endif %}
                     {% endif %}
                     {% block breadcrumb_extra %}{% endblock %}
                 </nav>

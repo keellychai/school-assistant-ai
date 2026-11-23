@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Answer templates</h1>
+        <p>Reusable layouts for answers, such as a standard closing line. Editing a template updates every answer that uses it.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <button class="btn btn-primary" type="button" id="new-template">{{ icon("plus", 16) }}New template</button>
+    </div>
+    {% endif %}
+</div>
+
+<section class="card" id="templates-table" aria-label="Answer templates"></section>
+
+<template id="template-form">
+    <div class="field">
+        <label class="required" for="t-name">Name</label>
+        <input class="input" id="t-name" name="name" maxlength="100" placeholder="e.g. Info + contact admin">
+    </div>
+    <div class="field">
+        <label for="t-description">Description</label>
+        <input class="input" id="t-description" name="description" maxlength="255">
+    </div>
+    <div class="field">
+        <label class="required" for="t-body">Template</label>
+        <textarea class="textarea" id="t-body" name="body_markdown" rows="7">{answer}</textarea>
+        <p class="hint">Must contain <code>{answer}</code>, which is replaced by the answer text. <code>{assistant_name}</code> is also available. Markdown is supported.</p>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, openFormModal, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const excerpt = (text, n = 110) => (text.length > n ? text.slice(0, n) + "…" : text);
+
+    const table = new DataTable(document.getElementById("templates-table"), {
+        endpoint: "/api/admin/chat/templates",
+        searchPlaceholder: "Search templates…",
+        columns: [
+            { key: "name", label: "Template", render: (t) => el("div", {}, el("div", { class: "cell-primary" }, t.name), t.description ? el("div", { class: "cell-secondary" }, t.description) : null) },
+            { key: "body_markdown", label: "Content", className: "cell-wrap", render: (t) => el("code", {}, excerpt(t.body_markdown)) },
+            { key: "usage_count", label: "Used by", render: (t) => `${t.usage_count} answer${t.usage_count === 1 ? "" : "s"}` },
+            { key: "updated_at", label: "Updated", render: (t) => relativeTime(t.updated_at) },
+        ],
+        rowActions: (t) => CAN_WRITE ? [
+            { label: "Edit", onClick: () => edit(t) },
+            { label: "Delete", danger: true, onClick: () => remove(t) },
+        ] : [],
+        empty: { title: "No templates yet", text: "Templates let many answers share the same wording." },
+    });
+
+    async function edit(template) {
+        const saved = await openFormModal({
+            title: template ? "Edit template" : "New template",
+            template: "#template-form",
+            values: template ? { name: template.name, description: template.description, body_markdown: template.body_markdown } : undefined,
+            submitText: template ? "Save" : "Create template",
+            onSubmit: (data) => api(template ? `/api/admin/chat/templates/${template.id}` : "/api/admin/chat/templates",
+                                    { method: template ? "PUT" : "POST", body: data }),
+        });
+        if (saved) { toast(template ? "Template saved." : "Template created."); table.reload(); }
+    }
+
+    async function remove(template) {
+        const message = template.usage_count
+            ? `${template.usage_count} answer(s) use it. They keep their own text but lose the template's extra wording. This can't be undone.`
+            : "This can't be undone.";
+        if (!await confirmDialog({ title: `Delete “${template.name}”?`, message })) return;
+        try {
+            await api(`/api/admin/chat/templates/${template.id}`, { method: "DELETE" });
+            toast("Template deleted.");
+            table.reload();
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("new-template")?.addEventListener("click", () => edit(null));
+</script>
+{% endblock %}

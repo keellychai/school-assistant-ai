@@ -47,7 +47,8 @@ class ConfiguredQuestion(TimestampMixin, db.Model):
     category: Mapped[QuestionCategory] = relationship(back_populates="questions")
     answers: Mapped[list["ConfiguredAnswer"]] = relationship(
         back_populates="question", cascade="all, delete-orphan", passive_deletes=True,
-        order_by="ConfiguredAnswer.priority.desc()",
+        # Highest priority first; ties go to the oldest answer, so the choice is stable.
+        order_by=lambda: [ConfiguredAnswer.priority.desc(), ConfiguredAnswer.id],
     )
     follow_up_links: Mapped[list["FollowUpQuestion"]] = relationship(
         foreign_keys="FollowUpQuestion.parent_question_id",

@@ -1,11 +1,19 @@
 import re
 
-from flask import render_template, request
+from flask import abort, render_template, request
 from sqlalchemy import func, select
 
 from ..auth.security import permission_required
 from ..extensions import db
-from ..models import ActivityLog, ChatSession, Event, SystemSetting, User
+from ..models import (
+    ActivityLog,
+    ChatSession,
+    ConfiguredQuestion,
+    ConversationFlow,
+    Event,
+    SystemSetting,
+    User,
+)
 from ..models.base import utcnow
 from . import bp
 from .navigation import ALL_ITEMS, nav_lookup, visible_navigation
@@ -66,6 +74,53 @@ def index():
 @permission_required("activity.read")
 def activity():
     return render_template("admin/activity.html")
+
+
+# --- AI Chat configuration -------------------------------------------------------
+# Pages are thin shells; data is loaded from /api/admin/chat/* by the page script.
+
+@bp.route("/chat/questions")
+@permission_required("chatconfig.read")
+def questions():
+    return render_template("admin/chat/questions.html")
+
+
+@bp.route("/chat/questions/<int:question_id>")
+@permission_required("chatconfig.read")
+def question_edit(question_id):
+    question = db.session.get(ConfiguredQuestion, question_id) or abort(404)
+    return render_template("admin/chat/question_edit.html", question=question)
+
+
+@bp.route("/chat/categories")
+@permission_required("chatconfig.read")
+def question_categories():
+    return render_template("admin/chat/categories.html")
+
+
+@bp.route("/chat/templates")
+@permission_required("chatconfig.read")
+def answer_templates():
+    return render_template("admin/chat/templates.html")
+
+
+@bp.route("/chat/flows")
+@permission_required("chatconfig.read")
+def flows():
+    return render_template("admin/chat/flows.html")
+
+
+@bp.route("/chat/flows/new")
+@permission_required("chatconfig.write")
+def flow_new():
+    return render_template("admin/chat/flow_edit.html", flow=None)
+
+
+@bp.route("/chat/flows/<int:flow_id>")
+@permission_required("chatconfig.read")
+def flow_edit(flow_id):
+    flow = db.session.get(ConversationFlow, flow_id) or abort(404)
+    return render_template("admin/chat/flow_edit.html", flow=flow)
 
 
 def _placeholder_view(item):

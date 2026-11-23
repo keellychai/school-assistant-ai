@@ -1,0 +1,241 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block title %}{{ flow.name if flow else "New flow" }}{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>{{ "Edit flow" if flow else "New flow" }}</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a class="card-link" href="{{ url_for('admin.flows') }}">← All flows</a>
+        <h1 id="flow-title" style="margin-top: 6px;">{{ flow.name if flow else "New conversation flow" }}</h1>
+        <p>Pick a starting question, then add the questions that should follow each step.</p>
+    </div>
+</div>
+
+<form id="flow-form" novalidate>
+    <div class="editor-layout">
+        <div class="stack">
+            <section class="card">
+                <div class="card-header"><div><h2>Flow steps</h2><p>Each step suggests its child steps as the next questions.</p></div></div>
+                <div class="card-body">
+                    <div class="field" style="margin: 0;">
+                        <input type="hidden" name="root">
+                        <div id="tree"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <aside class="editor-aside">
+            <section class="card">
+                <div class="card-header"><div><h2>Details</h2></div></div>
+                <fieldset class="card-body" style="border: 0; margin: 0; min-width: 0;" {% if not can_write %}disabled{% endif %}>
+                    <div class="field">
+                        <label class="required" for="f-name">Name</label>
+                        <input class="input" id="f-name" name="name" maxlength="120">
+                    </div>
+                    <div class="field">
+                        <label for="f-description">Description</label>
+                        <textarea class="textarea" id="f-description" name="description" maxlength="2000" style="min-height: 80px;"></textarea>
+                    </div>
+                    <div class="field">
+                        <span class="field-label">Status</span>
+                        <label class="switch"><input type="checkbox" name="is_enabled" checked><span class="switch-track"></span>Enabled</label>
+                    </div>
+                </fieldset>
+                {% if can_write %}
+                <div class="card-footer">
+                    <span class="dirty-note" id="flow-dirty" hidden>Unsaved changes</span>
+                    <button class="btn btn-primary" type="submit">{{ "Save flow" if flow else "Create flow" }}</button>
+                </div>
+                {% endif %}
+            </section>
+
+            {% if can_write and flow %}
+            <section class="card danger-zone">
+                <div class="card-header"><div><h2>Delete flow</h2><p>The questions themselves are kept.</p></div></div>
+                <div class="card-body"><button class="btn btn-danger" type="button" id="delete-flow">Delete flow</button></div>
+            </section>
+            {% endif %}
+        </aside>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, icon, confirmDialog, getFormValues, setFormValues, showFieldErrors, clearFieldErrors,
+             toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { fillSelect, move, orderButtons, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const FLOW_ID = {{ flow.id if flow else "null" }};
+    const LIST_URL = "{{ url_for('admin.flows') }}";
+    const MAX_DEPTH = 6;
+
+    const form = document.getElementById("flow-form");
+    const treeBox = document.getElementById("tree");
+    const guard = unsavedChangesGuard();
+    let questions = [];          // options
+    let byId = new Map();
+    let root = null;             // { question_id, children: [...] }
+
+    const setDirty = (value) => {
+        guard.set(value);
+        document.getElementById("flow-dirty")?.toggleAttribute("hidden", !value);
+    };
+
+    const questionLabel = (q) => `${q.text} — ${q.category}`;
+
+    function questionSelect(excludeIds, placeholder) {
+        const select = el("select", { class: "select", "aria-label": placeholder });
+        fillSelect(select, questions.filter((q) => !excludeIds.has(q.id)), { placeholder, label: questionLabel, selected: "" });
+        return select;
+    }
+
+    // Ids on the path from the root to a node: a question can't repeat within its own branch (no loops).
+    function pathIds(path) {
+        const ids = new Set();
+        let node = root;
+        ids.add(node.question_id);
+        for (const index of path) { node = node.children[index]; ids.add(node.question_id); }
+        return ids;
+    }
+
+    function nodeAt(path) {
+        let node = root;
+        for (const index of path) node = node.children[index];
+        return node;
+    }
+
+    function renderNode(node, path) {
+        const question = byId.get(node.question_id);
+        const isRoot = path.length === 0;
+        const parent = isRoot ? null : nodeAt(path.slice(0, -1));
+        const index = path.at(-1);
+
+        const card = el("div", { class: `flow-node-card${isRoot ? " is-root" : ""}` },
+            el("span", { class: "order-index" }, isRoot ? "★" : String(index + 1)),
+            el("span", { class: "order-text" },
+                question ? question.text : "(deleted question)",
+                question && !question.is_enabled ? el("span", { class: "subtle" }, " (disabled)") : null,
+                isRoot ? el("span", { class: "subtle" }, " · starting question") : null),
+            CAN_WRITE && !isRoot ? orderButtons({
+                index, length: parent.children.length,
+                onMove: (d) => { parent.children = move(parent.children, index, d); setDirty(true); render(); },
+                onRemove: async () => {
+                    if (node.children.length && !await confirmDialog({
+                        title: "Remove this step?", message: "Its follow-on steps will be removed from the flow too.", confirmText: "Remove",
+                    })) return;
+                    parent.children.splice(index, 1); setDirty(true); render();
+                },
+            }) : null,
+            CAN_WRITE && isRoot ? el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: changeRoot }, "Change") : null,
+        );
+
+        const children = node.children.length
+            ? el("ul", {}, ...node.children.map((child, i) => renderNode(child, [...path, i])))
+            : null;
+
+        let adder = null;
+        if (CAN_WRITE && path.length + 1 < MAX_DEPTH) {
+            const select = questionSelect(new Set([...pathIds(path), ...node.children.map((c) => c.question_id)]), "Add a next question…");
+            const add = el("button", { class: "btn btn-secondary btn-sm", type: "button", onclick: () => {
+                if (!select.value) return select.focus();
+                node.children.push({ question_id: Number(select.value), children: [] });
+                setDirty(true); render();
+            } }, icon("plus", 14), "Add step");
+            adder = el("div", { class: "flow-add" }, select, add);
+        }
+
+        return el("li", { class: "flow-node" }, card, children, adder);
+    }
+
+    function render() {
+        if (!root) {
+            if (!CAN_WRITE) { treeBox.replaceChildren(el("p", { class: "subtle" }, "This flow has no steps.")); return; }
+            const select = questionSelect(new Set(), "Choose the starting question…");
+            treeBox.replaceChildren(
+                el("p", { class: "muted", style: "margin-bottom: 10px;" }, "Every flow starts from one question."),
+                el("div", { class: "add-row", style: "margin: 0;" }, select,
+                    el("button", { class: "btn btn-primary", type: "button", onclick: () => {
+                        if (!select.value) return select.focus();
+                        root = { question_id: Number(select.value), children: [] };
+                        setDirty(true); render();
+                    } }, "Set starting question")),
+            );
+            return;
+        }
+        treeBox.replaceChildren(el("ul", { class: "flow-tree" }, renderNode(root, [])));
+    }
+
+    function changeRoot() {
+        const select = questionSelect(new Set([root.question_id]), "Choose a different starting question…");
+        const row = el("div", { class: "add-row" }, select,
+            el("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => {
+                if (!select.value) return select.focus();
+                root.question_id = Number(select.value); setDirty(true); render();
+            } }, "Use this"),
+            el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: render }, "Cancel"));
+        treeBox.prepend(row);
+        select.focus();
+    }
+
+    const stripTree = (node) => node && { question_id: node.question_id, children: node.children.map(stripTree) };
+
+    form.addEventListener("input", (event) => { if (event.target.name) setDirty(true); });
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!CAN_WRITE) return;
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        const { name, description, is_enabled } = getFormValues(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const saved = await api(FLOW_ID ? `/api/admin/chat/flows/${FLOW_ID}` : "/api/admin/chat/flows", {
+                method: FLOW_ID ? "PUT" : "POST",
+                body: { name, description: description || null, is_enabled, root: stripTree(root) },
+            });
+            setDirty(false);
+            if (!FLOW_ID) { window.location.href = `${LIST_URL}/${saved.id}?created=1`; return; }
+            document.getElementById("flow-title").textContent = saved.name;
+            root = saved.root;
+            render();
+            toast("Flow saved.");
+        } catch (error) {
+            showFieldErrors(form, error.fields || {}, Object.keys(error.fields || {}).length ? "" : error.message);
+        } finally {
+            button.disabled = false; button.classList.remove("is-loading");
+        }
+    });
+
+    document.getElementById("delete-flow")?.addEventListener("click", async () => {
+        if (!await confirmDialog({ title: "Delete this flow?", message: "The questions themselves are not deleted. This can't be undone." })) return;
+        try {
+            await api(`/api/admin/chat/flows/${FLOW_ID}`, { method: "DELETE" });
+            setDirty(false);
+            window.location.href = LIST_URL;
+        } catch (error) { toastError(error); }
+    });
+
+    async function init() {
+        questions = await api("/api/admin/chat/questions/options");
+        byId = new Map(questions.map((q) => [q.id, q]));
+        if (FLOW_ID) {
+            const flow = await api(`/api/admin/chat/flows/${FLOW_ID}`);
+            setFormValues(form, { name: flow.name, description: flow.description, is_enabled: flow.is_enabled });
+            root = flow.root;
+            if (new URLSearchParams(location.search).has("created")) {
+                toast("Flow created.");
+                history.replaceState(null, "", location.pathname);
+            }
+        }
+        render();
+    }
+
+    init().catch(toastError);
+</script>
+{% endblock %}

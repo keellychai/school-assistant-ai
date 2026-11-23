@@ -40,13 +40,13 @@ NAVIGATION = (
     )),
     NavSection("AI Assistant", (
         NavItem("questions", "/chat/questions", "Questions & answers", "help-circle", "chatconfig.read",
-                "Questions, answers, keywords, suggested questions and follow-ups shown in AI Chat.", 4),
+                "Questions, answers, keywords, suggested questions and follow-ups shown in AI Chat."),
         NavItem("question_categories", "/chat/categories", "Categories", "folder", "chatconfig.read",
-                "Group questions into categories shown in AI Chat.", 4),
+                "Group questions into categories shown in AI Chat."),
         NavItem("flows", "/chat/flows", "Conversation flows", "git-branch", "chatconfig.read",
-                "Predefined conversation paths built from configured questions.", 4),
+                "Predefined conversation paths built from configured questions."),
         NavItem("answer_templates", "/chat/templates", "Answer templates", "file-text", "chatconfig.read",
-                "Reusable answer templates.", 4),
+                "Reusable answer templates."),
         NavItem("assistant", "/assistant", "Assistant settings", "zap", "assistant.read",
                 "Name, greeting, tone, fallback answer and AI provider.", 5),
         NavItem("knowledge", "/knowledge", "Knowledge base", "book-open", "knowledge.read",
@@ -68,6 +68,14 @@ NAVIGATION = (
 
 ALL_ITEMS = {item.endpoint: (section, item) for section in NAVIGATION for item in section.items}
 
+# Pages that aren't in the menu themselves but belong to a menu item
+# (highlighted in the sidebar and shown in the breadcrumb under it).
+SUBPAGES = {
+    "question_edit": "questions",
+    "flow_edit": "flows",
+    "flow_new": "flows",
+}
+
 
 def visible_navigation(user=None):
     user = user or current_user
@@ -83,4 +91,5 @@ def nav_lookup(endpoint):
     """(section, item) for 'admin.xyz', or (None, None)."""
     if not endpoint or not endpoint.startswith("admin."):
         return None, None
-    return ALL_ITEMS.get(endpoint.split(".", 1)[1], (None, None))
+    name = endpoint.split(".", 1)[1]
+    return ALL_ITEMS.get(SUBPAGES.get(name, name), (None, None))
