@@ -29,10 +29,10 @@ MODULES = [
     ("monitoring", "Conversations", "Conversation history and analytics."),
     ("users", "Users", ""),
     ("roles", "Roles & permissions", "Create roles and decide what they can do."),
-    ("settings", "System settings", ""),
+    ("settings", "System settings", "“Security” covers sign-in lockout, session timeout and password rules."),
     ("activity", "Activity log", ""),
 ]
-ACTION_LABELS = {"view": "Access", "read": "View", "write": "Edit", "manage": "Manage"}
+ACTION_LABELS = {"view": "Access", "read": "View", "write": "Edit", "manage": "Manage", "security": "Security"}
 
 
 def catalog():
@@ -76,8 +76,8 @@ def _permissions(codes):
                        {"permissions": f"Unknown permission(s): {', '.join(unknown)}"})
     # Write access without read access makes no sense in the UI: include read automatically.
     for code in list(codes):
-        if code.endswith(".write"):
-            read = code.replace(".write", ".read")
+        if code.endswith((".write", ".security")):
+            read = code.rsplit(".", 1)[0] + ".read"
             if read not in found and (p := db.session.scalar(select(Permission).where(Permission.code == read))):
                 found[read] = p
     return [found[c] for c in sorted(found)]

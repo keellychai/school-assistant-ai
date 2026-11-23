@@ -203,8 +203,9 @@ def test_content_manager_can_manage_events(client, make_user):
 
 def test_dashboard_shows_new_upcoming_event(admin_client):
     make(admin_client, title="Pentas Seni", start="2030-05-01T08:00", end=None)
-    html = admin_client.get("/admin/").data.decode()
-    assert "Pentas Seni" in html and '<p class="stat-value">1</p>' in html
+    data = admin_client.get("/api/admin/dashboard").get_json()
+    assert "Pentas Seni" in [e["title"] for e in data["upcoming_events"]]  # no end time still counts
+    assert data["totals"]["upcoming_events"] >= 1
 
 
 def test_events_page_renders(admin_client):

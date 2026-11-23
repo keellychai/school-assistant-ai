@@ -45,6 +45,9 @@ def create_app(config_name=None):
     app.register_blueprint(admin_api_bp)
     app.register_blueprint(me_api_bp)
 
+    from .auth.security import enforce_session_timeout
+    app.before_request(enforce_session_timeout)
+
     from .cli import register_cli
     register_cli(app)
 

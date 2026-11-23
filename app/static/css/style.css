@@ -225,6 +225,12 @@ h3,
     color: #1d6b3d;
 }
 
+.form-alert-info {
+    border: 1px solid #c9d3f5;
+    background: #f2f5fe;
+    color: #2f3f9e;
+}
+
 .field-error {
     margin: 8px 0 0;
     color: #a42a2a;

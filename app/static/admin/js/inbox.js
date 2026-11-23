@@ -53,9 +53,9 @@ if (root) {
         }));
     }
 
-    async function load() {
+    async function load({ background = false } = {}) {
         try {
-            const data = await api("/api/me/notifications", { params: { limit: 15 } });
+            const data = await api("/api/me/notifications", { params: { limit: 15 }, background });
             setCount(data.unread);
             render(data.items);
         } catch { /* keep the last state; try again on the next poll */ }
@@ -72,7 +72,7 @@ if (root) {
 
     // This runs before the shared dropdown handler opens the menu, so "hidden" means "about to open".
     toggle.addEventListener("click", () => { if (menu.hidden) load(); });
-    window.addEventListener("inbox:refresh", load);
-    load();
-    setInterval(() => { if (!document.hidden) load(); }, 60000);
+    window.addEventListener("inbox:refresh", () => load());
+    load({ background: true });
+    setInterval(() => { if (!document.hidden) load({ background: true }); }, 60000);
 }

@@ -108,11 +108,11 @@ def test_account_locks_after_max_failed_attempts(client, make_user):
 
 
 def test_lockout_threshold_comes_from_system_settings(client, make_user):
-    db.session.get(SystemSetting, "security.max_failed_logins").value = 2
+    db.session.get(SystemSetting, "security.max_failed_logins").value = 3  # the lowest allowed value
     db.session.commit()
     user = make_user("admin")
-    login(client, user.email, "wrong-password")
-    login(client, user.email, "wrong-password")
+    for _ in range(3):
+        login(client, user.email, "wrong-password")
     db.session.refresh(user)
     assert user.is_locked
 

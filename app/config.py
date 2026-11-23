@@ -52,7 +52,8 @@ class Config:
     REMEMBER_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
     REMEMBER_COOKIE_DURATION = timedelta(days=14)
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    # Upper bound for the session cookie; the idle timeout itself is a System Setting.
+    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
 
     # CSRF (Flask-WTF). Token is sent by JS in the X-CSRFToken header.
     WTF_CSRF_TIME_LIMIT = None
@@ -68,9 +69,8 @@ class Config:
     # Legacy text classifier trained by train_model.py
     CLASSIFIER_PATH = BASE_DIR / "models" / "school_assistant_model.joblib"
 
-    # Account lockout
-    MAX_FAILED_LOGINS = int(os.getenv("MAX_FAILED_LOGINS", "5"))
-    LOCKOUT_MINUTES = int(os.getenv("LOCKOUT_MINUTES", "15"))
+    # Account lockout, session timeout and password rules are System Settings
+    # (Admin > System settings > Security), stored in the database.
 
 
 class DevelopmentConfig(Config):

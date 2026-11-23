@@ -1,6 +1,6 @@
 {% from "admin/_icons.html" import icon %}
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ branding.theme }}" style="--accent: {{ branding.primary_color }};">
+<html lang="en" data-locale="{{ branding.locale }}" data-theme="{{ branding.theme }}" style="--accent: {{ branding.primary_color }};">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -131,6 +131,7 @@
                                 <strong>{{ current_user.full_name }}</strong>
                                 <small>{{ current_user.email }}</small>
                             </div>
+                            <a class="dropdown-item" role="menuitem" href="{{ url_for('admin.profile') }}">{{ icon("user", 16) }} My profile</a>
                             <a class="dropdown-item" role="menuitem" href="{{ url_for('main.dashboard') }}">{{ icon("grid", 16) }} Student dashboard</a>
                             <form method="post" action="{{ url_for('auth.logout') }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

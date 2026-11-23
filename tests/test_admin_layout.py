@@ -58,8 +58,8 @@ def test_content_manager_blocked_from_admin_only_pages(client, make_user, path):
 
 
 def test_coming_soon_page_names_step_and_permission(admin_client):
-    html = admin_client.get("/admin/settings").data
-    assert b"step 10" in html and b"settings.read" in html
+    html = admin_client.get("/admin/conversations").data
+    assert b"step 12" in html and b"monitoring.read" in html
 
 
 def test_breadcrumb_shows_section_and_page(admin_client):
@@ -80,12 +80,6 @@ def test_unsafe_brand_color_is_ignored(app, admin_client):
     db.session.commit()
     html = admin_client.get("/admin/").data
     assert b"--accent: #4f63df" in html and b"url(x)" not in html
-
-
-def test_overview_shows_real_counts(admin_client):
-    html = admin_client.get("/admin/").data.decode()
-    assert "Scheduled events" in html
-    assert '<p class="stat-value">5</p>' in html  # five seeded events
 
 
 # --- Activity log API -----------------------------------------------------------

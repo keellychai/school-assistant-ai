@@ -86,11 +86,17 @@ Local development uses SQLite at `instance/schoolsync.db`. For Supabase/PostgreS
 ## Authentication & access control
 
 - Sign in at `/auth/login`. Admins land on `/admin/`, regular users on `/dashboard`.
-- Accounts are created by administrators (`flask create-admin` for now; the User Management module comes later).
+- Accounts are created by administrators in **Admin > Users** (or `flask create-admin` for the first super admin).
+- Everyone can edit their own name, email and password at **My profile** (user menu, top right). Changing the
+  email or password needs the current password and signs out the account's other devices.
 - Roles: `super_admin`, `admin`, `content_manager`, `viewer`, `user` (see `PERMISSIONS`/`ROLES` in `app/seeds.py`).
 - Every `/admin/*` page and `/api/admin/*` endpoint requires an admin-capable account. Individual routes add
   `@permission_required("module.write")` from `app/auth/security.py`.
-- After 5 wrong passwords (configurable in system settings) an account is locked for 15 minutes.
+- Security rules are set in **Admin > System settings > Security** (needs the `settings.security` permission,
+  which only `super_admin` has by default): lockout after N wrong passwords (default 5, for 15 minutes),
+  the idle session timeout (default 8 hours) and the minimum password length (default 8).
+- Sessions idle for longer than the timeout are signed out. The notification bell's background polling is sent
+  with an `X-Background-Request` header so it doesn't keep an idle session alive.
 - Deactivating a user or changing their password signs them out of every browser immediately.
 - Logins, failures, lockouts, sign-outs and denied access attempts are written to `activity_logs`.
 

@@ -1,17 +1,21 @@
-"""The signed-in user's own inbox (/api/me/notifications). Any logged-in user."""
+"""The signed-in user's own account (/api/me/*): inbox, profile and password. Any logged-in user."""
 
-from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required
+from flask import Blueprint, current_app, jsonify, request
+from flask_login import current_user, login_required, login_user
 from sqlalchemy import func, select, update
 
-from ..extensions import db
-from ..models import Notification, UserNotification
+from ..extensions import db, limiter
+from ..models import ActivityLog, ChatSession, Notification, User, UserNotification
 from ..models.base import utcnow
+from ..services.audit import log_activity
 from ..services.markdown_render import render_markdown
 from ..services.notifications import dispatch_quietly
-from .admin.utils import iso
+from ..services.system_settings import password_min_length
+from .admin.schemas import PasswordChangeIn, ProfileIn
+from .admin.utils import ApiError, iso, parse_body, register_error_handlers
 
 bp = Blueprint("me_api", __name__, url_prefix="/api/me")
+register_error_handlers(bp)
 
 
 @bp.before_request
@@ -60,3 +64,85 @@ def mark_all_read():
         UserNotification.user_id == current_user.id, UserNotification.read_at.is_(None)).values(read_at=utcnow()))
     db.session.commit()
     return jsonify({"unread": 0})
+
+
+# --- Profile & password -------------------------------------------------------------
+
+def _profile_json(user):
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "role": {"name": user.role.name, "label": user.role.name.replace("_", " ").title()},
+        "last_login_at": iso(user.last_login_at),
+        "created_at": iso(user.created_at),
+        "password_min_length": password_min_length(),
+        "stats": {
+            "chat_sessions": db.session.scalar(select(func.count(ChatSession.id)).where(ChatSession.user_id == user.id)) or 0,
+            "actions": db.session.scalar(select(func.count(ActivityLog.id)).where(ActivityLog.actor_id == user.id)) or 0,
+        },
+    }
+
+
+def _stay_signed_in(user):
+    """Credentials changed, so the session token was rotated (signing out every other
+    device). Re-issue the login for this browser so the user isn't signed out here too."""
+    remembered = bool(request.cookies.get(current_app.config.get("REMEMBER_COOKIE_NAME", "remember_token")))
+    login_user(user, remember=remembered)
+
+
+def _require_current_password(user, password):
+    if not password or not user.check_password(password):
+        log_activity("password_check_failed", user, summary="Wrong current password on My profile")
+        db.session.commit()
+        raise ApiError("Please correct the highlighted fields.", 422,
+                       {"current_password": "Your current password is incorrect."})
+
+
+@bp.get("/profile")
+def get_profile():
+    return jsonify(_profile_json(current_user))
+
+
+@bp.put("/profile")
+@limiter.limit("10 per minute")
+def update_profile():
+    data = parse_body(ProfileIn)
+    user = current_user._get_current_object()
+    email_changed = data.email != user.email
+    if email_changed:
+        _require_current_password(user, data.current_password)
+        if db.session.scalar(select(User.id).where(User.email == data.email, User.id != user.id)):
+            raise ApiError("Please correct the highlighted fields.", 422,
+                           {"email": "Another account already uses this email."})
+
+    before = {"full_name": user.full_name, "email": user.email}
+    user.full_name, user.email = data.full_name, data.email
+    after = {"full_name": user.full_name, "email": user.email}
+    changed = sorted(k for k in before if before[k] != after[k])
+    if changed:
+        if email_changed:
+            user.rotate_session_token()
+        log_activity("update", user, summary="Updated own profile: " + ", ".join(changed).replace("_", " "),
+                     before={k: before[k] for k in changed}, after={k: after[k] for k in changed})
+    db.session.commit()
+    if email_changed:
+        _stay_signed_in(user)
+    return jsonify({**_profile_json(user), "changed": changed})
+
+
+@bp.put("/password")
+@limiter.limit("5 per minute")
+def change_password():
+    data = parse_body(PasswordChangeIn)
+    user = current_user._get_current_object()
+    _require_current_password(user, data.current_password)
+    minimum = password_min_length()
+    if len(data.new_password) < minimum:
+        raise ApiError("Please correct the highlighted fields.", 422,
+                       {"new_password": f"Use at least {minimum} characters."})
+    user.set_password(data.new_password)  # also rotates the session token
+    log_activity("password_changed", user, summary="Changed own password (other sessions signed out)")
+    db.session.commit()
+    _stay_signed_in(user)
+    return jsonify({"ok": True})

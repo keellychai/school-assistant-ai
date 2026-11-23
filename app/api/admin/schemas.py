@@ -652,3 +652,93 @@ class RoleIn(Strict):
 
 class FallbackIn(Strict):
     fallback_answer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+
+
+# --- System settings ---------------------------------------------------------------
+
+class SystemGeneralIn(Strict):
+    app_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=60)]
+    app_tagline: Annotated[str, StringConstraints(strip_whitespace=True, max_length=160)] = ""
+    theme_mode: str
+    primary_color: str
+    default_language: str
+    timezone: str
+
+    @field_validator("theme_mode")
+    @classmethod
+    def _theme(cls, value):
+        from ...services.system_settings import THEME_MODES
+        if value not in {m["id"] for m in THEME_MODES}:
+            raise ValueError("Choose light, dark or follow each device.")
+        return value
+
+    @field_validator("primary_color")
+    @classmethod
+    def _color(cls, value):
+        from ...services.system_settings import HEX_COLOR
+        value = (value or "").strip().lower()
+        if not HEX_COLOR.match(value):
+            raise ValueError("Use a hex colour like #4f63df.")
+        return value
+
+    @field_validator("default_language")
+    @classmethod
+    def _language(cls, value):
+        from ...services.system_settings import LANGUAGES
+        if value not in {l["id"] for l in LANGUAGES}:
+            raise ValueError("Choose a supported language.")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value):
+        from ...services.system_settings import timezones
+        if value not in timezones():
+            raise ValueError("Choose a timezone from the list.")
+        return value
+
+
+def _bounded(key):
+    from ...services.system_settings import SECURITY_LIMITS
+    _, low, high = SECURITY_LIMITS[key]
+    return Annotated[int, Field(ge=low, le=high)]
+
+
+class SystemSecurityIn(Strict):
+    session_timeout_minutes: _bounded("security.session_timeout_minutes")
+    max_failed_logins: _bounded("security.max_failed_logins")
+    lockout_minutes: _bounded("security.lockout_minutes")
+    password_min_length: _bounded("security.password_min_length")
+
+
+# --- My profile -------------------------------------------------------------------------
+
+class ProfileIn(Strict):
+    full_name: FullName
+    email: str
+    # Required only when the email changes (checked in the view).
+    current_password: str | None = Field(default=None, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, value):
+        return _email(value)
+
+
+class PasswordChangeIn(Strict):
+    current_password: Annotated[str, Field(max_length=256)]
+    new_password: Annotated[str, Field(max_length=256)]
+    confirm_password: Annotated[str, Field(max_length=256)]
+
+    @model_validator(mode="after")
+    def _match(self):
+        errors = {}
+        if not self.current_password:
+            errors["current_password"] = "Enter your current password."
+        if self.new_password != self.confirm_password:
+            errors["confirm_password"] = "The passwords don't match."
+        if self.new_password and self.new_password == self.current_password:
+            errors["new_password"] = "Choose a password different from your current one."
+        if errors:
+            raise FieldErrors(errors)
+        return self

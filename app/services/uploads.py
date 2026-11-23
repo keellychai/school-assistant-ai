@@ -1,4 +1,4 @@
-"""Image uploads (assistant avatar, later: logos).
+"""Image uploads (assistant avatar, app logo).
 
 Files are identified by their first bytes, not by the name or the browser's
 declared type, saved under a random name, and served from /media/<kind>/<name>.
@@ -15,7 +15,7 @@ from flask import current_app
 log = logging.getLogger(__name__)
 
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
-PUBLIC_KINDS = {"avatars"}
+PUBLIC_KINDS = {"avatars", "logos"}
 FILENAME_RE = re.compile(r"^[a-f0-9]{32}\.(png|jpg|gif|webp)$")
 
 

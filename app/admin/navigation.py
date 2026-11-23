@@ -60,7 +60,7 @@ NAVIGATION = (
         NavItem("roles", "/roles", "Roles & permissions", "shield", "roles.manage",
                 "Define roles and what each one may do."),
         NavItem("settings", "/settings", "System settings", "sliders", "settings.read",
-                "Branding, theme, language, timezone and security.", 10),
+                "Branding, theme, language, timezone and security."),
         NavItem("activity", "/activity", "Activity log", "activity", "activity.read",
                 "Audit trail of sign-ins and administrative changes."),
     )),

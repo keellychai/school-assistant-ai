@@ -15,9 +15,10 @@ function csrfToken() {
 /**
  * api("/api/admin/events", { params: { page: 2 } })
  * api("/api/admin/events", { method: "POST", body: {...} })
+ * api("/api/me/notifications", { background: true })  // a poll: doesn't count as activity
  * Resolves with parsed JSON (or null for 204). Rejects with ApiError.
  */
-export async function api(path, { method = "GET", body, params, signal } = {}) {
+export async function api(path, { method = "GET", body, params, signal, background = false } = {}) {
     const url = new URL(path, window.location.origin);
     for (const [key, value] of Object.entries(params || {})) {
         if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, value);
@@ -25,6 +26,8 @@ export async function api(path, { method = "GET", body, params, signal } = {}) {
 
     const options = { method, signal, credentials: "same-origin", headers: { Accept: "application/json" } };
     if (method !== "GET") options.headers["X-CSRFToken"] = csrfToken();
+    // Automatic polls must not keep an idle session alive (see the session timeout setting).
+    if (background) options.headers["X-Background-Request"] = "1";
     if (body !== undefined) {
         options.headers["Content-Type"] = "application/json";
         options.body = JSON.stringify(body);

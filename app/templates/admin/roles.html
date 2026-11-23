@@ -56,13 +56,14 @@
                 return el("label", { class: "matrix-option", title: p.description || p.code }, input, p.label);
             })),
         )));
-        // Edit implies View: keep the read box ticked (and locked) while edit is ticked.
+        // Edit (and Security) imply View: keep the read box ticked (and locked) while either is ticked.
         const sync = () => {
-            container.querySelectorAll('input[value$=".write"]').forEach((write) => {
-                const read = container.querySelector(`input[value="${write.value.replace(".write", ".read")}"]`);
-                if (!read || locked) return;
-                if (write.checked) read.checked = true;
-                read.disabled = write.checked;
+            if (locked) return;
+            container.querySelectorAll('input[value$=".read"]').forEach((read) => {
+                const module = read.value.slice(0, -".read".length);
+                const needs = [...container.querySelectorAll(`input[value="${module}.write"], input[value="${module}.security"]`)].some((i) => i.checked);
+                if (needs) read.checked = true;
+                read.disabled = needs;
             });
         };
         container.addEventListener("change", sync);

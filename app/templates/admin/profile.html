@@ -1,0 +1,183 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+
+{% block title %}My profile{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>My profile</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="profile-head">
+        <span class="avatar avatar-lg" id="profile-avatar" aria-hidden="true"></span>
+        <div>
+            <h1 id="profile-name">{{ current_user.full_name }}</h1>
+            <p class="muted" id="profile-meta"></p>
+        </div>
+    </div>
+</div>
+
+<div class="editor-layout">
+    <div class="stack">
+        <form class="card" id="profile-form" novalidate>
+            <div class="card-header"><div><h2>Your details</h2><p>Your name is shown in the activity log and on changes you make.</p></div></div>
+            <div class="card-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="p-name">Full name</label>
+                        <input class="input" id="p-name" name="full_name" maxlength="120" autocomplete="name">
+                    </div>
+                    <div class="field">
+                        <label class="required" for="p-email">Email</label>
+                        <input class="input" id="p-email" name="email" type="email" maxlength="255" autocomplete="email">
+                        <p class="hint">You sign in with this address.</p>
+                    </div>
+                </div>
+                <div class="field" id="email-password" hidden>
+                    <label class="required" for="p-current">Current password</label>
+                    <input class="input" id="p-current" name="current_password" type="password" autocomplete="current-password">
+                    <p class="hint">Needed to change your email. Your other devices will be signed out.</p>
+                </div>
+            </div>
+            <div class="card-footer">
+                <span class="dirty-note" data-dirty hidden>Unsaved changes</span>
+                <button class="btn btn-primary" type="submit">Save details</button>
+            </div>
+        </form>
+
+        <form class="card" id="password-form" novalidate>
+            <div class="card-header"><div><h2>Change password</h2><p>You stay signed in here; every other device is signed out.</p></div></div>
+            <div class="card-body">
+                <div class="field">
+                    <label class="required" for="pw-current">Current password</label>
+                    <input class="input" id="pw-current" name="current_password" type="password" autocomplete="current-password">
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="pw-new">New password</label>
+                        <input class="input" id="pw-new" name="new_password" type="password" autocomplete="new-password">
+                        <p class="hint" id="password-rule"></p>
+                    </div>
+                    <div class="field">
+                        <label class="required" for="pw-confirm">Repeat new password</label>
+                        <input class="input" id="pw-confirm" name="confirm_password" type="password" autocomplete="new-password">
+                    </div>
+                </div>
+                <label class="checkbox-row"><input type="checkbox" id="pw-show"> Show passwords</label>
+            </div>
+            <div class="card-footer">
+                <button class="btn btn-primary" type="submit">Change password</button>
+            </div>
+        </form>
+    </div>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Account</h2></div></div>
+            <div class="card-body"><dl class="facts" id="account-facts"></dl></div>
+        </section>
+        <section class="card">
+            <div class="card-body">
+                <a class="card-link" href="{{ url_for('admin.activity') if current_user.has_permission('activity.read') else '#' }}"
+                   {% if not current_user.has_permission('activity.read') %}hidden{% endif %}>See the full activity log →</a>
+                <p class="subtle" style="margin-top: 6px;">Wrong-password attempts on this page are recorded in the activity log.</p>
+            </div>
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, clearFieldErrors, formatDateTime, relativeTime, showFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, initials, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const $ = (id) => document.getElementById(id);
+    const profileForm = $("profile-form");
+    const passwordForm = $("password-form");
+    const guard = unsavedChangesGuard();
+    let profile;
+
+    const fact = (term, value) => [el("dt", {}, term), el("dd", {}, value)];
+
+    function setDirty(value) {
+        guard.set(value);
+        profileForm.querySelector("[data-dirty]").hidden = !value;
+    }
+
+    function render() {
+        $("profile-avatar").textContent = initials(profile.full_name);
+        $("profile-name").textContent = profile.full_name;
+        $("profile-meta").replaceChildren(profile.email, " ", badge(profile.role.label, "accent"));
+        profileForm.elements.full_name.value = profile.full_name;
+        profileForm.elements.email.value = profile.email;
+        profileForm.elements.current_password.value = "";
+        $("email-password").hidden = true;
+        $("password-rule").textContent = `At least ${profile.password_min_length} characters.`;
+        $("account-facts").replaceChildren(
+            ...fact("Role", profile.role.label),
+            ...fact("Last sign-in", profile.last_login_at ? `${relativeTime(profile.last_login_at)}` : "—"),
+            ...fact("Member since", formatDateTime(profile.created_at, { dateStyle: "medium" })),
+            ...fact("AI Chat conversations", String(profile.stats.chat_sessions)),
+            ...fact("Actions logged", String(profile.stats.actions)),
+        );
+        // keep the top-bar menu in step with the saved name/email
+        document.querySelectorAll(".user-meta strong, .dropdown-header strong").forEach((n) => { n.textContent = profile.full_name; });
+        document.querySelectorAll(".dropdown-header small").forEach((n) => { n.textContent = profile.email; });
+        document.querySelectorAll(".user-button .avatar").forEach((n) => { n.textContent = profile.full_name.slice(0, 2).toUpperCase(); });
+    }
+
+    async function busy(form, task) {
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try { return await task(); }
+        catch (error) {
+            const fields = error.fields || {};
+            showFieldErrors(form, fields, Object.keys(fields).length ? "" : error.message);
+            return null;
+        } finally { button.disabled = false; button.classList.remove("is-loading"); }
+    }
+
+    profileForm.addEventListener("input", () => {
+        setDirty(true);
+        $("email-password").hidden = profileForm.elements.email.value.trim().toLowerCase() === profile.email;
+    });
+
+    profileForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const v = profileForm.elements;
+        const result = await busy(profileForm, () => api("/api/me/profile", { method: "PUT", body: {
+            full_name: v.full_name.value, email: v.email.value,
+            current_password: $("email-password").hidden ? null : v.current_password.value,
+        } }));
+        if (!result) return;
+        profile = result;
+        render();
+        setDirty(false);
+        toast(result.changed.length ? "Your details were saved." : "No changes to save.");
+    });
+
+    $("pw-show").addEventListener("change", (event) => {
+        passwordForm.querySelectorAll("input.input").forEach((input) => { input.type = event.target.checked ? "text" : "password"; });
+    });
+
+    passwordForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const v = passwordForm.elements;
+        const result = await busy(passwordForm, () => api("/api/me/password", { method: "PUT", body: {
+            current_password: v.current_password.value, new_password: v.new_password.value, confirm_password: v.confirm_password.value,
+        } }));
+        if (!result) return;
+        passwordForm.reset();
+        passwordForm.querySelectorAll("input.input").forEach((input) => { input.type = "password"; });
+        toast("Password changed. Other devices have been signed out.");
+    });
+
+    async function init() {
+        profile = await api("/api/me/profile");
+        render();
+        setDirty(false);
+    }
+    init().catch(toastError);
+</script>
+{% endblock %}

@@ -14,9 +14,10 @@ from sqlalchemy import func, or_, select
 
 from ...auth.security import permission_required
 from ...extensions import db
-from ...models import ActivityLog, ChatSession, Role, SystemSetting, User, UserNotification
+from ...models import ActivityLog, ChatSession, Role, User, UserNotification
 from ...models.base import utcnow
 from ...services.audit import log_activity
+from ...services.system_settings import password_min_length
 from ...services.rbac import (
     ADMIN_ACCESS,
     SUPER_ADMIN,
@@ -35,7 +36,7 @@ WRITE = "users.write"
 
 
 def _password_min():
-    return int(SystemSetting.get_value("security.password_min_length", 8) or 8)
+    return password_min_length()
 
 
 def _generate_password():

@@ -1,10 +1,11 @@
 """Authorization helpers: permission decorators, unauthorized handling, safe redirects."""
 
+import time
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import abort, jsonify, redirect, request, url_for
-from flask_login import current_user
+from flask import abort, flash, jsonify, redirect, request, session, url_for
+from flask_login import current_user, logout_user
 
 from ..extensions import db, login_manager
 from ..services.audit import log_activity
@@ -77,4 +78,41 @@ def require_admin_access():
         return login_manager.unauthorized()
     if not current_user.can_access_admin:
         _deny(("dashboard.view",))
+    return None
+
+
+# --- Idle session timeout ----------------------------------------------------------
+
+LAST_SEEN_KEY = "_last_seen"
+_TOUCH_EVERY_SECONDS = 30  # don't rewrite the session cookie on every single request
+
+
+def enforce_session_timeout():
+    """App-wide `before_request`: sign out sessions idle for longer than the
+    "Session timeout" system setting. Background polls (X-Background-Request)
+    are allowed through but don't count as activity."""
+    if request.endpoint in (None, "static") or not current_user.is_authenticated:
+        return None
+    from ..services.system_settings import session_timeout_minutes
+
+    now = int(time.time())
+    minutes = session_timeout_minutes()
+    last_seen = session.get(LAST_SEEN_KEY)
+    if isinstance(last_seen, int) and now - last_seen > minutes * 60:
+        log_activity("session_expired", current_user, summary=f"Signed out after {minutes} minutes without activity")
+        db.session.commit()
+        logout_user()
+        session.clear()
+        message = f"You were signed out after {minutes} minutes without activity. Please sign in again."
+        if is_api_request():
+            return jsonify({"error": message}), 401
+        flash(message, "info")
+        next_path = request.full_path.rstrip("?") if request.method == "GET" else None
+        return redirect(url_for("auth.login", next=next_path) if is_safe_next(next_path) else url_for("auth.login"))
+
+    background = request.headers.get("X-Background-Request") == "1"
+    if not background and (not isinstance(last_seen, int) or now - last_seen >= _TOUCH_EVERY_SECONDS):
+        session[LAST_SEEN_KEY] = now
+    elif last_seen is None:
+        session[LAST_SEEN_KEY] = now
     return None

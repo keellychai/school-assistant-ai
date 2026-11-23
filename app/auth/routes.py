@@ -1,13 +1,14 @@
 from datetime import timedelta
 
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import select
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db, limiter
-from ..models import SystemSetting, User
+from ..models import User
 from ..models.base import utcnow
+from ..services import system_settings
 from ..services.audit import log_activity
 from . import bp
 from .forms import LoginForm
@@ -21,9 +22,7 @@ _DUMMY_HASH = generate_password_hash("not-a-real-password")
 
 
 def _lockout_policy():
-    max_attempts = SystemSetting.get_value("security.max_failed_logins", current_app.config["MAX_FAILED_LOGINS"])
-    minutes = SystemSetting.get_value("security.lockout_minutes", current_app.config["LOCKOUT_MINUTES"])
-    return int(max_attempts), int(minutes)
+    return system_settings.lockout_policy()
 
 
 def _register_failure(user):

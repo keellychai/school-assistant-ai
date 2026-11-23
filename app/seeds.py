@@ -31,6 +31,7 @@ from .models import (
     User,
 )
 from .models.base import utcnow
+from .services.system_settings import DEFAULTS as SETTING_DEFAULTS
 
 SEED_FILE = Path(__file__).parent / "seed_data" / "school_data.json"
 DEFAULT_TIMEZONE = "Asia/Jakarta"
@@ -45,7 +46,8 @@ PERMISSIONS = {
     "monitoring.read": "View conversations and analytics",
     "users.read": "View users", "users.write": "Edit and (de)activate users",
     "roles.manage": "Create roles and assign permissions",
-    "settings.read": "View system settings", "settings.write": "Edit system settings",
+    "settings.read": "View system settings", "settings.write": "Edit branding, theme, language and timezone",
+    "settings.security": "Edit security settings (sign-in lockout, session timeout, password rules)",
     "activity.read": "View activity logs",
 }
 
@@ -55,7 +57,7 @@ _READS = {p for p in PERMISSIONS if p.endswith(".read")} | {"dashboard.view"}
 
 ROLES = {
     "super_admin": ("Full access, including roles and security settings", _ALL),
-    "admin": ("Manages every module except roles", _ALL - {"roles.manage"}),
+    "admin": ("Manages every module except roles and security settings", _ALL - {"roles.manage", "settings.security"}),
     "content_manager": (
         "Manages events, notifications, Q&A and knowledge",
         {"dashboard.view", "events.read", "events.write", "notifications.read", "notifications.write",
@@ -66,19 +68,7 @@ ROLES = {
     "user": ("Regular user: chat only, no admin access", set()),
 }
 
-DEFAULT_SYSTEM_SETTINGS = {
-    "app.name": "SchoolSync AI",
-    "app.tagline": "AI-Based School Administration and Communication Assistant",
-    "app.logo_url": None,
-    "theme.mode": "light",
-    "theme.primary_color": "#4f63df",
-    "locale.default_language": "id",
-    "locale.timezone": DEFAULT_TIMEZONE,
-    "security.session_timeout_minutes": 480,
-    "security.max_failed_logins": 5,
-    "security.lockout_minutes": 15,
-    "security.password_min_length": 8,
-}
+DEFAULT_SYSTEM_SETTINGS = SETTING_DEFAULTS
 
 
 def seed_roles():
