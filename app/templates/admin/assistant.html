@@ -1,0 +1,428 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("assistant.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Assistant settings</h1>
+        <p>How the assistant introduces itself, how it answers, and whether it may use AI. Changes apply to AI Chat as soon as you save.</p>
+    </div>
+</div>
+
+<form id="assistant-form" novalidate>
+<div class="editor-layout">
+    <fieldset class="stack" style="border: 0; margin: 0; padding: 0; min-width: 0;" {% if not can_write %}disabled{% endif %}>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Identity</h2><p>What users see when they open AI Chat.</p></div></div>
+            <div class="card-body">
+                <div class="field">
+                    <span class="field-label">Profile image</span>
+                    <div class="avatar-row">
+                        <span class="avatar avatar-lg" id="avatar-preview" aria-hidden="true"></span>
+                        <div class="avatar-actions">
+                            {% if can_write %}
+                            <label class="btn btn-secondary btn-sm" for="avatar-file">Upload image</label>
+                            <input class="sr-only" type="file" id="avatar-file" accept="image/png,image/jpeg,image/gif,image/webp">
+                            <button class="btn btn-ghost btn-sm" type="button" id="avatar-remove">Remove</button>
+                            {% endif %}
+                            <p class="hint">PNG, JPG, GIF or WebP, up to 2 MB. Square images look best.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="required" for="s-name">Assistant name</label>
+                    <input class="input" id="s-name" name="assistant_name" maxlength="100">
+                </div>
+                <div class="field">
+                    <label class="required" for="s-welcome">Welcome message</label>
+                    <input class="input" id="s-welcome" name="welcome_message" maxlength="500">
+                    <p class="hint">The first line users see.</p>
+                </div>
+                <div class="field">
+                    <label for="s-greeting">Initial greeting</label>
+                    <textarea class="textarea" id="s-greeting" name="initial_greeting" maxlength="1000" style="min-height: 80px;"></textarea>
+                    <p class="hint">A short follow-on telling users what they can ask about.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Personality &amp; language</h2><p>Used when the AI writes answers. Your configured answers are shown exactly as written.</p></div></div>
+            <div class="card-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="s-language">Default language</label>
+                        <select class="select" id="s-language" name="default_language"></select>
+                    </div>
+                    <div class="field">
+                        <label for="s-tone">Response tone</label>
+                        <select class="select" id="s-tone" name="tone"></select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="s-personality">Personality</label>
+                    <textarea class="textarea" id="s-personality" name="personality" maxlength="1000" style="min-height: 80px;"
+                              placeholder="e.g. Patient and encouraging. Explains school procedures step by step."></textarea>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Chat features</h2><p>Turn parts of AI Chat on or off.</p></div></div>
+            <div class="card-body">
+                <input type="hidden" name="features">
+                <div class="feature-list" id="feature-list"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>How answers are chosen</h2><p>For every message, AI Chat tries these in order and uses the first that works.</p></div></div>
+            <div class="card-body">
+                <ol class="priority-list">
+                    <li><strong>Configured questions &amp; answers</strong><span>Exact wording you wrote. Always tried first.</span></li>
+                    <li id="priority-knowledge"><strong>Knowledge base</strong><span>A matching knowledge entry.</span></li>
+                    <li id="priority-ai"><strong>AI-generated answer</strong><span>Only when AI answers are enabled below.</span></li>
+                    <li><strong>Fallback answer</strong><span>When nothing else fits.</span></li>
+                </ol>
+                <div class="field" style="margin-top: 18px;">
+                    <label for="s-threshold">Match strictness: <strong id="threshold-value"></strong></label>
+                    <input type="range" id="s-threshold" name="match_threshold" min="0.1" max="1" step="0.05" data-type="number">
+                    <p class="hint">How closely a user's message must match a configured question. Lower catches more paraphrases but risks wrong matches.</p>
+                </div>
+                <div class="field">
+                    <label class="required" for="s-fallback">Fallback answer</label>
+                    <textarea class="textarea" id="s-fallback" name="fallback_answer" maxlength="2000" style="min-height: 80px;"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <section class="card" id="ai-card">
+            <div class="card-header">
+                <div><h2>AI answers</h2><p>Let an AI model answer questions that your configured content doesn't cover.</p></div>
+                <label class="switch"><input type="checkbox" name="ai_enabled" id="s-ai-enabled"><span class="switch-track"></span><span>Enabled</span></label>
+            </div>
+            <div class="card-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="s-provider">Provider</label>
+                        <select class="select" id="s-provider" name="ai_provider"></select>
+                    </div>
+                    <div class="field">
+                        <label for="s-model">Model</label>
+                        <select class="select" id="s-model"></select>
+                        <input type="hidden" name="ai_model">
+                        <input class="input" id="s-model-custom" placeholder="e.g. claude-opus-5-5" hidden style="margin-top: 8px;" aria-label="Custom model ID">
+                        <p class="hint" id="model-note"></p>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="s-effort">Effort</label>
+                        <select class="select" id="s-effort" name="ai_effort"></select>
+                        <p class="hint" id="effort-note"></p>
+                    </div>
+                    <div class="field">
+                        <label for="s-max-tokens">Maximum response length (tokens)</label>
+                        <input class="input" id="s-max-tokens" name="max_tokens" type="number" min="1024" max="64000" step="512" data-type="number">
+                        <p class="hint">Includes the model's reasoning. Too low cuts answers off; 16,000 is a safe default.</p>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="s-history">Conversation memory</label>
+                    <input class="input" id="s-history" type="number" min="0" max="50" data-feature-number="ai_history_messages" style="max-width: 160px;">
+                    <p class="hint">How many earlier messages are sent to the AI for context (0 to 50).</p>
+                </div>
+                <div class="field">
+                    <label for="s-key-env">API key environment variable</label>
+                    <input class="input" id="s-key-env" name="api_key_env_var" maxlength="100" spellcheck="false" style="font-family: ui-monospace, Consolas, monospace;">
+                    <p class="hint">The key is never entered here. Set it on the server (for example in <code>.env</code>) under this name; it must end in <code>_API_KEY</code>.</p>
+                </div>
+            </div>
+        </section>
+    </fieldset>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>AI status</h2></div><span class="badge" id="status-badge"></span></div>
+            <div class="card-body">
+                <p id="status-message" class="muted"></p>
+                {% if can_write %}
+                <button class="btn btn-secondary btn-sm" type="button" id="test-ai" style="margin-top: 12px;">Test connection</button>
+                <p class="hint" id="test-result" role="status" style="margin-top: 8px;"></p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Preview</h2><p>Updates as you type.</p></div></div>
+            <div class="chat-mock">
+                <div class="chat-mock-header">
+                    <span class="avatar" id="mock-avatar" aria-hidden="true"></span>
+                    <div><strong id="mock-name"></strong><small>Online</small></div>
+                </div>
+                <div class="chat-preview">
+                    <div class="bubble bubble-bot" id="mock-welcome"></div>
+                    <div class="bubble bubble-bot" id="mock-greeting"></div>
+                    <div class="followup-chips" id="mock-suggested"></div>
+                </div>
+            </div>
+        </section>
+
+        {% if can_write %}
+        <section class="card save-card">
+            <div class="card-body">
+                <p class="dirty-note" id="dirty-note" hidden>You have unsaved changes.</p>
+                <p class="subtle" id="saved-note"></p>
+                <button class="btn btn-primary" type="submit" style="width: 100%;">Save settings</button>
+            </div>
+        </section>
+        {% endif %}
+    </aside>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api, upload } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, clearFieldErrors, relativeTime, showFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { fillSelect, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const CUSTOM = "__custom__";
+    const form = document.getElementById("assistant-form");
+    const $ = (id) => document.getElementById(id);
+    const guard = unsavedChangesGuard();
+    let options, settings, suggested = [];
+
+    function setDirty(value) {
+        guard.set(value);
+        $("dirty-note")?.toggleAttribute("hidden", !value);
+    }
+
+    // ---------- avatar ----------
+
+    function renderAvatar(node, url, name) {
+        node.replaceChildren();
+        if (url) node.append(el("img", { src: url, alt: "" }));
+        else node.textContent = (name || "A").trim().slice(0, 1).toUpperCase();
+    }
+
+    // ---------- model picker ----------
+
+    function currentProvider() {
+        return options.providers.find((p) => p.id === form.elements.ai_provider.value) || options.providers[0];
+    }
+
+    function renderModels(selectedId) {
+        const provider = currentProvider();
+        const select = $("s-model");
+        fillSelect(select, [...provider.models, { id: CUSTOM, label: "Other model ID…" }], { label: "label" });
+        const known = provider.models.some((m) => m.id === selectedId);
+        select.value = known ? selectedId : CUSTOM;
+        $("s-model-custom").value = known ? "" : (selectedId || "");
+        syncModel();
+    }
+
+    function syncModel() {
+        const select = $("s-model");
+        const custom = select.value === CUSTOM;
+        $("s-model-custom").hidden = !custom;
+        form.elements.ai_model.value = custom ? $("s-model-custom").value.trim() : select.value;
+        const model = currentProvider().models.find((m) => m.id === select.value);
+        $("model-note").textContent = custom ? "Use an exact model ID published by the provider." : (model?.note || "");
+    }
+
+    function syncEffortNote() {
+        $("effort-note").textContent = options.efforts.find((e) => e.id === form.elements.ai_effort.value)?.note || "";
+    }
+
+    // ---------- features ----------
+
+    function renderFeatures(values) {
+        $("feature-list").replaceChildren(...options.features.map((f) => el("label", { class: "feature-item" },
+            el("span", { class: "switch" },
+                el("input", { type: "checkbox", "data-feature": f.key, checked: values[f.key] ? true : null }),
+                el("span", { class: "switch-track" })),
+            el("span", {}, el("strong", {}, f.label), el("small", {}, f.hint)),
+        )));
+        $("s-history").value = values.ai_history_messages;
+    }
+
+    function readFeatures() {
+        const features = {};
+        form.querySelectorAll("[data-feature]").forEach((input) => { features[input.dataset.feature] = input.checked; });
+        const history = $("s-history").value;
+        features.ai_history_messages = history === "" ? 10 : Number(history);
+        return features;
+    }
+
+    // ---------- preview & derived UI ----------
+
+    function updatePreview() {
+        const name = form.elements.assistant_name.value || "Assistant";
+        $("mock-name").textContent = name;
+        renderAvatar($("mock-avatar"), settings.avatar_url, name);
+        renderAvatar($("avatar-preview"), settings.avatar_url, name);
+        $("mock-welcome").textContent = form.elements.welcome_message.value || "…";
+        const greeting = form.elements.initial_greeting.value;
+        $("mock-greeting").textContent = greeting;
+        $("mock-greeting").hidden = !greeting;
+        const features = readFeatures();
+        $("mock-suggested").replaceChildren(...(features.suggested_questions ? suggested : []).map((text) => el("span", { class: "followup-chip" }, text)));
+        $("threshold-value").textContent = Number(form.elements.match_threshold.value).toFixed(2);
+        $("priority-knowledge").classList.toggle("is-off", !features.use_knowledge_base);
+        $("priority-ai").classList.toggle("is-off", !form.elements.ai_enabled.checked);
+        $("ai-card").classList.toggle("is-muted", !form.elements.ai_enabled.checked);
+    }
+
+    function renderStatus(status) {
+        const badge = $("status-badge");
+        const map = { off: ["Off", ""], ready: ["Ready", "badge-success"], missing_key: ["Key missing", "badge-warning"] };
+        const [label, variant] = map[status.state];
+        badge.className = `badge badge-dot ${variant}`;
+        badge.textContent = label;
+        $("status-message").textContent = status.message;
+    }
+
+    function renderSaved() {
+        $("saved-note").textContent = settings.updated_at
+            ? `Last saved ${relativeTime(settings.updated_at)}${settings.updated_by ? " by " + settings.updated_by : ""}.`
+            : "";
+    }
+
+    function fill(values) {
+        for (const name of ["assistant_name", "welcome_message", "initial_greeting", "personality", "fallback_answer", "api_key_env_var"]) {
+            form.elements[name].value = values[name] ?? "";
+        }
+        form.elements.default_language.value = values.default_language;
+        form.elements.tone.value = values.tone;
+        form.elements.match_threshold.value = values.match_threshold;
+        form.elements.ai_enabled.checked = values.ai_enabled;
+        form.elements.ai_provider.value = values.ai_provider;
+        form.elements.ai_effort.value = values.ai_effort;
+        form.elements.max_tokens.value = values.max_tokens;
+        renderModels(values.ai_model);
+        renderFeatures(values.features);
+        syncEffortNote();
+        updatePreview();
+    }
+
+    function payload() {
+        syncModel();
+        const v = form.elements;
+        return {
+            assistant_name: v.assistant_name.value,
+            welcome_message: v.welcome_message.value,
+            initial_greeting: v.initial_greeting.value,
+            default_language: v.default_language.value,
+            tone: v.tone.value,
+            personality: v.personality.value || null,
+            fallback_answer: v.fallback_answer.value,
+            match_threshold: Number(v.match_threshold.value),
+            features: readFeatures(),
+            ai_enabled: v.ai_enabled.checked,
+            ai_provider: v.ai_provider.value,
+            ai_model: v.ai_model.value,
+            api_key_env_var: v.api_key_env_var.value.trim(),
+            ai_effort: v.ai_effort.value,
+            max_tokens: v.max_tokens.value === "" ? null : Number(v.max_tokens.value),
+        };
+    }
+
+    // ---------- events ----------
+
+    form.addEventListener("input", () => { setDirty(true); updatePreview(); });
+    form.addEventListener("change", (event) => {
+        if (event.target === form.elements.ai_provider) renderModels(currentProvider().models[0]?.id);
+        if (event.target.id === "s-model") syncModel();
+        if (event.target === form.elements.ai_effort) syncEffortNote();
+        if (event.target.id === "avatar-file") return;
+        setDirty(true); updatePreview();
+    });
+    $("s-model-custom").addEventListener("input", syncModel);
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!CAN_WRITE) return;
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const result = await api("/api/admin/assistant", { method: "PUT", body: payload() });
+            settings = result.settings;
+            fill(settings);
+            renderStatus(result.status);
+            renderSaved();
+            setDirty(false);
+            toast(result.changed.length ? "Assistant settings saved." : "No changes to save.");
+        } catch (error) {
+            const fields = error.fields || {};
+            showFieldErrors(form, fields, Object.keys(fields).length ? "Please correct the highlighted fields." : error.message);
+        } finally {
+            button.disabled = false; button.classList.remove("is-loading");
+        }
+    });
+
+    $("avatar-file")?.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+            const { avatar_url } = await upload("/api/admin/assistant/avatar", { avatar: file });
+            settings.avatar_url = avatar_url;
+            updatePreview();
+            toast("Profile image updated.");
+        } catch (error) { toastError(error); }
+    });
+
+    $("avatar-remove")?.addEventListener("click", async () => {
+        if (!settings.avatar_url) return;
+        try {
+            await api("/api/admin/assistant/avatar", { method: "DELETE" });
+            settings.avatar_url = null;
+            updatePreview();
+            toast("Profile image removed.");
+        } catch (error) { toastError(error); }
+    });
+
+    // ---------- AI connection test ----------
+
+    $("test-ai")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const result = $("test-result");
+        if (guard.get()) { result.textContent = "Save your changes first: the test uses the saved settings."; return; }
+        button.disabled = true; button.classList.add("is-loading");
+        result.textContent = "Sending a short test message…";
+        try {
+            const data = await api("/api/admin/assistant/test", { method: "POST" });
+            result.textContent = data.ok ? `✓ ${data.message} (${data.latency_ms} ms)` : `✗ ${data.message}`;
+            result.style.color = data.ok ? "var(--success)" : "var(--danger)";
+        } catch (error) {
+            result.textContent = error.message;
+            result.style.color = "var(--danger)";
+        } finally { button.disabled = false; button.classList.remove("is-loading"); }
+    });
+
+    // ---------- init ----------
+
+    async function init() {
+        const data = await api("/api/admin/assistant");
+        options = data.options;
+        settings = data.settings;
+        suggested = data.suggested_preview;
+        fillSelect(form.elements.default_language, options.languages, { label: "label" });
+        fillSelect(form.elements.tone, options.tones, { label: "label" });
+        fillSelect(form.elements.ai_provider, options.providers, { label: "label" });
+        fillSelect(form.elements.ai_effort, options.efforts, { label: "label" });
+        fill(settings);
+        renderStatus(data.status);
+        renderSaved();
+        setDirty(false);
+    }
+
+    init().catch(toastError);
+</script>
+{% endblock %}

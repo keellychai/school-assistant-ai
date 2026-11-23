@@ -1,0 +1,162 @@
+{% from "admin/_icons.html" import icon %}
+<!DOCTYPE html>
+<html lang="en" data-locale="{{ branding.locale }}" data-theme="{{ branding.theme }}" style="--accent: {{ branding.primary_color }};">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}{{ nav_item.label if nav_item else "Admin" }}{% endblock %} · {{ branding.name }} Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin/admin.css') }}">
+    <script>
+        // Resolve the theme before first paint (avoids a light/dark flash):
+        // the viewer's own choice wins, then the system setting ("light", "dark" or "system").
+        (function () {
+            const root = document.documentElement;
+            let theme = root.dataset.theme;
+            try {
+                const saved = localStorage.getItem("admin-theme");
+                if (saved === "light" || saved === "dark") theme = saved;
+            } catch (e) {}
+            if (theme !== "light" && theme !== "dark") {
+                theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            }
+            root.dataset.theme = theme;
+        })();
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body class="admin" data-timezone="{{ timezone }}">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-shell">
+        <aside class="sidebar" id="sidebar" aria-label="Admin navigation">
+            <div class="sidebar-header">
+                <a class="sidebar-brand" href="{{ url_for('admin.index') }}">
+                    {% if branding.logo_url %}
+                        <img class="brand-mark" src="{{ branding.logo_url }}" alt="">
+                    {% else %}
+                        <span class="brand-mark" aria-hidden="true">{{ branding.name[:1] }}</span>
+                    {% endif %}
+                    <span class="brand-text">
+                        <strong>{{ branding.name }}</strong>
+                        <small>Admin Control Panel</small>
+                    </span>
+                </a>
+                <button class="icon-button sidebar-close" type="button" data-sidebar-close aria-label="Close menu">
+                    {{ icon("x") }}
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                {% for section in admin_nav %}
+                    <div class="nav-section">
+                        <p class="nav-section-title">{{ section.title }}</p>
+                        <ul>
+                            {% for item in section.items %}
+                                {% set active = nav_item and nav_item.endpoint == item.endpoint %}
+                                <li>
+                                    <a class="nav-item{% if active %} is-active{% endif %}"
+                                       href="{{ url_for('admin.' ~ item.endpoint) }}"
+                                       {% if active %}aria-current="page"{% endif %}>
+                                        {{ icon(item.icon) }}
+                                        <span>{{ item.label }}</span>
+                                        {% if item.planned_step %}<span class="nav-soon" title="Planned for step {{ item.planned_step }}">Soon</span>{% endif %}
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endfor %}
+            </nav>
+
+            <div class="sidebar-footer">
+                <a class="nav-item" href="{{ url_for('main.chatbot') }}">
+                    {{ icon("message") }}<span>Open AI Chat</span>{{ icon("external", 14, "nav-trailing") }}
+                </a>
+            </div>
+        </aside>
+        <div class="sidebar-backdrop" data-sidebar-close></div>
+
+        <div class="admin-main">
+            <header class="topbar">
+                <button class="icon-button menu-button" type="button" data-sidebar-open aria-label="Open menu" aria-controls="sidebar">
+                    {{ icon("menu") }}
+                </button>
+
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <a href="{{ url_for('admin.index') }}">Admin</a>
+                    {% if nav_section and nav_item and nav_item.endpoint != "index" %}
+                        <span aria-hidden="true">/</span><span class="breadcrumb-muted">{{ nav_section.title }}</span>
+                        <span aria-hidden="true">/</span>
+                        {% if request.endpoint == "admin." ~ nav_item.endpoint %}
+                            <span>{{ nav_item.label }}</span>
+                        {% else %}
+                            <a href="{{ url_for('admin.' ~ nav_item.endpoint) }}">{{ nav_item.label }}</a>
+                        {% endif %}
+                    {% endif %}
+                    {% block breadcrumb_extra %}{% endblock %}
+                </nav>
+
+                <div class="topbar-actions">
+                    <div class="dropdown inbox" data-dropdown data-inbox>
+                        <button class="icon-button inbox-button" type="button" data-dropdown-toggle aria-haspopup="menu" aria-expanded="false" aria-label="Notifications">
+                            {{ icon("bell") }}<span class="inbox-count" hidden></span>
+                        </button>
+                        <div class="dropdown-menu inbox-menu" role="menu" hidden>
+                            <div class="inbox-header">
+                                <strong>Notifications</strong>
+                                <button class="link-button" type="button" data-inbox-read-all>Mark all read</button>
+                            </div>
+                            <div class="inbox-list" data-inbox-list><p class="inbox-empty">Loading…</p></div>
+                        </div>
+                    </div>
+                    <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">
+                        <span class="theme-icon-dark">{{ icon("moon") }}</span>
+                        <span class="theme-icon-light">{{ icon("sun") }}</span>
+                    </button>
+
+                    <div class="dropdown" data-dropdown>
+                        <button class="user-button" type="button" data-dropdown-toggle aria-haspopup="menu" aria-expanded="false">
+                            <span class="avatar" aria-hidden="true">{{ (current_user.full_name or "U")[:2] | upper }}</span>
+                            <span class="user-meta">
+                                <strong>{{ current_user.full_name }}</strong>
+                                <small>{{ current_user.role.name | replace("_", " ") | title }}</small>
+                            </span>
+                            {{ icon("chevron-down", 16) }}
+                        </button>
+                        <div class="dropdown-menu" role="menu" hidden>
+                            <div class="dropdown-header">
+                                <strong>{{ current_user.full_name }}</strong>
+                                <small>{{ current_user.email }}</small>
+                            </div>
+                            <a class="dropdown-item" role="menuitem" href="{{ url_for('admin.profile') }}">{{ icon("user", 16) }} My profile</a>
+                            <a class="dropdown-item" role="menuitem" href="{{ url_for('main.dashboard') }}">{{ icon("grid", 16) }} Student dashboard</a>
+                            <form method="post" action="{{ url_for('auth.logout') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="dropdown-item danger" role="menuitem" type="submit">{{ icon("log-out", 16) }} Sign out</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="page" id="main" tabindex="-1">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="status">{{ message }}</div>
+                    {% endfor %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+    <script type="module" src="{{ url_for('static', filename='admin/js/layout.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='admin/js/inbox.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

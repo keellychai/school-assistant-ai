@@ -1,0 +1,19 @@
+# Virtual environments (recreate from requirements.txt)
+.venv/
+.venv-*/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets & local data
+.env
+instance/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

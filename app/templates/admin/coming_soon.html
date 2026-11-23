@@ -1,0 +1,21 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ nav_item.label }}</h1>
+        <p>{{ nav_item.description }}</p>
+    </div>
+</div>
+
+<section class="card coming-soon">
+    <div class="stat-icon">{{ icon(nav_item.icon, 24) }}</div>
+    <h2>This module is next on the roadmap</h2>
+    <p>
+        {{ nav_item.label }} will be built in step {{ nav_item.planned_step }}.
+        The page is already protected: only accounts with the
+        <code>{{ nav_item.permission }}</code> permission can open it.
+    </p>
+</section>
+{% endblock %}

@@ -1,0 +1,202 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("users.write") %}
+
+{% block title %}{{ user.full_name }}{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>{{ user.full_name }}</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="profile-head">
+        <span class="avatar avatar-lg" id="profile-avatar"></span>
+        <div>
+            <a class="card-link" href="{{ url_for('admin.users') }}">← All users</a>
+            <h1 id="profile-name" style="margin-top: 4px;">{{ user.full_name }}</h1>
+            <p id="profile-meta" class="muted"></p>
+        </div>
+    </div>
+</div>
+
+<div class="editor-layout">
+    <div class="stack">
+        <section class="card">
+            <div class="card-header"><div><h2>Account</h2><p id="account-hint">Name, sign-in email and role.</p></div></div>
+            <form id="account-form" novalidate>
+                <fieldset class="card-body" style="border: 0; margin: 0; min-width: 0;" id="account-fields">
+                    <div class="field-row">
+                        <div class="field">
+                            <label class="required" for="a-name">Full name</label>
+                            <input class="input" id="a-name" name="full_name" maxlength="120">
+                        </div>
+                        <div class="field">
+                            <label class="required" for="a-email">Email</label>
+                            <input class="input" id="a-email" name="email" type="email" maxlength="255">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="required" for="a-role">Role</label>
+                        <select class="select" id="a-role" name="role_id" data-type="number"></select>
+                        <p class="hint" id="role-hint"></p>
+                    </div>
+                </fieldset>
+                <div class="card-footer" id="account-footer" hidden>
+                    <span class="dirty-note" id="dirty-note" hidden>Unsaved changes</span>
+                    <button class="btn btn-primary" type="submit">Save account</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Activity</h2><p>What this person did, and changes made to their account.</p></div></div>
+            <div id="activity-table"></div>
+        </section>
+    </div>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Sign-in &amp; security</h2></div></div>
+            <div class="card-body">
+                <dl class="facts" id="security-facts"></dl>
+                <div class="action-stack" id="security-actions"></div>
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>Usage</h2></div></div>
+            <div class="card-body"><dl class="facts" id="usage-facts"></dl></div>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>What they can do</h2><p id="permission-hint"></p></div></div>
+            <div class="card-body"><div class="chip-list" id="permission-list"></div></div>
+        </section>
+    </aside>
+</div>
+
+<template id="password-form">
+    <p class="muted" style="margin-bottom: 14px;">The user is signed out everywhere and must use the new password.</p>
+    <div class="field">
+        <label class="radio-row"><input type="radio" name="password_mode" value="generate" checked> Generate a temporary password</label>
+        <label class="radio-row"><input type="radio" name="password_mode" value="manual"> Set a password</label>
+        <input class="input" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" hidden style="margin-top: 6px;">
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, clearFieldErrors, formatDateTime, getFormValues, relativeTime, showFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect, initials, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+    import { userActions } from "{{ url_for('static', filename='admin/js/user-actions.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const USER_ID = {{ user.id }};
+    const form = document.getElementById("account-form");
+    const guard = unsavedChangesGuard();
+    let user, roles = [];
+    const $ = (id) => document.getElementById(id);
+    const setDirty = (v) => { guard.set(v); $("dirty-note").toggleAttribute("hidden", !v); };
+    const when = (iso) => iso ? `${relativeTime(iso)} (${formatDateTime(iso)})` : "Never";
+    const fact = (term, value) => [el("dt", {}, term), el("dd", {}, value)];
+
+    const actions = userActions({ onChange: () => load() });
+
+    function render() {
+        const editable = CAN_WRITE && user.can_manage;
+        $("profile-avatar").textContent = initials(user.full_name);
+        $("profile-name").textContent = user.full_name;
+        document.title = `${user.full_name} · {{ branding.name }} Admin`;
+        $("profile-meta").replaceChildren(...[
+            user.email, " ",
+            badge(user.role.label, user.role.admin_access ? "accent" : ""), " ",
+            user.is_active ? badge("Active", "success") : badge("Inactive"), " ",
+            user.is_locked ? badge("Locked", "danger") : null,
+            user.is_you ? badge("You", "accent") : null,
+        ].filter((n) => n !== null));
+
+        // account form
+        $("account-fields").disabled = !editable;
+        $("account-footer").hidden = !editable;
+        $("account-hint").textContent = editable ? "Name, sign-in email and role."
+            : (CAN_WRITE ? "This account has more access than yours, so you can't change it." : "You can view but not change accounts.");
+        form.elements.full_name.value = user.full_name;
+        form.elements.email.value = user.email;
+        const options = roles.filter((r) => r.assignable || r.id === user.role.id);
+        fillSelect(form.elements.role_id, options, { label: (r) => r.label + (r.admin_access ? " (admin panel)" : ""), selected: user.role.id });
+        form.elements.role_id.disabled = !editable || user.is_you;
+        $("role-hint").textContent = user.is_you ? "You can't change your own role." : "";
+
+        // security
+        $("security-facts").replaceChildren(
+            ...fact("Status", user.is_active ? "Active" : "Inactive (can't sign in)"),
+            ...fact("Last sign-in", when(user.last_login_at)),
+            ...fact("Failed attempts", String(user.failed_login_attempts)),
+            ...(user.is_locked ? fact("Locked until", formatDateTime(user.locked_until)) : []),
+            ...fact("Account created", formatDateTime(user.created_at, { dateStyle: "medium" })),
+        );
+        const buttons = [];
+        if (editable) {
+            buttons.push(el("button", { class: "btn btn-secondary", type: "button", onclick: () => actions.resetPassword(user) }, "Reset password"));
+            if (user.is_locked) buttons.push(el("button", { class: "btn btn-secondary", type: "button", onclick: () => actions.unlock(user) }, "Unlock account"));
+            if (!user.is_you) buttons.push(user.is_active
+                ? el("button", { class: "btn btn-danger", type: "button", onclick: () => actions.setActive(user, false) }, "Deactivate account")
+                : el("button", { class: "btn btn-primary", type: "button", onclick: () => actions.setActive(user, true) }, "Activate account"));
+        }
+        $("security-actions").replaceChildren(...buttons);
+
+        // usage
+        $("usage-facts").replaceChildren(
+            ...fact("AI Chat conversations", String(user.stats.chat_sessions)),
+            ...fact("Unread notifications", String(user.stats.unread_notifications)),
+            ...fact("Actions in the activity log", String(user.stats.actions)),
+        );
+
+        // permissions
+        $("permission-hint").textContent = user.permissions.length
+            ? `From the “${user.role.label}” role.` : "This role has no admin permissions: AI Chat and the student dashboard only.";
+        $("permission-list").replaceChildren(...user.permissions.map((code) => el("span", { class: "chip" }, code)));
+    }
+
+    async function load() {
+        [user, roles] = await Promise.all([api(`/api/admin/users/${USER_ID}`), roles.length ? roles : api("/api/admin/users/roles")]);
+        render();
+        setDirty(false);
+        activity.reload();
+    }
+
+    form.addEventListener("input", () => setDirty(true));
+    form.addEventListener("change", () => setDirty(true));
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const values = getFormValues(form);
+            await api(`/api/admin/users/${USER_ID}`, { method: "PUT",
+                body: { full_name: values.full_name, email: values.email, role_id: values.role_id ?? user.role.id } });
+            toast("Account saved.");
+            await load();
+        } catch (error) {
+            const fields = error.fields || {};
+            showFieldErrors(form, fields, Object.keys(fields).length ? "" : error.message);
+        } finally { button.disabled = false; button.classList.remove("is-loading"); }
+    });
+
+    const label = (v) => (v || "").replaceAll("_", " ");
+    const activity = new DataTable($("activity-table"), {
+        endpoint: `/api/admin/users/${USER_ID}/activity`, perPage: 10, search: false,
+        filters: [{ name: "action", label: "All actions", options: ["login", "login_failed", "logout", "create", "update", "delete", "permission_denied", "account_locked"]
+            .map((a) => ({ value: a, label: label(a) })) }],
+        columns: [
+            { key: "created_at", label: "When", render: (r) => el("span", { class: "nowrap", title: formatDateTime(r.created_at) }, relativeTime(r.created_at)) },
+            { key: "action", label: "Action", render: (r) => badge(label(r.action)) },
+            { key: "summary", label: "Details", className: "cell-wrap" },
+            { key: "ip_address", label: "IP", className: "nowrap" },
+        ],
+        empty: { title: "No activity yet" },
+    });
+
+    load().catch(toastError);
+</script>
+{% endblock %}

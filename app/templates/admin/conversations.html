@@ -1,0 +1,213 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set tab = request.args.get("tab") if request.args.get("tab") in ("all", "review") else "overview" %}
+{% set can_review = current_user.has_permission("monitoring.write") %}
+{% set can_add = current_user.has_permission("chatconfig.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Conversations</h1>
+        <p>What people ask AI Chat, how each question was answered, and the questions it couldn't answer yet.</p>
+    </div>
+</div>
+
+<nav class="segmented page-tabs" aria-label="Conversation views">
+    <a href="{{ url_for('admin.monitoring') }}" {% if tab == "overview" %}aria-current="page"{% endif %}>Overview</a>
+    <a href="{{ url_for('admin.monitoring', tab='all') }}" {% if tab == "all" %}aria-current="page"{% endif %}>All conversations</a>
+    <a href="{{ url_for('admin.monitoring', tab='review') }}" {% if tab == "review" %}aria-current="page"{% endif %}>Needs review <span class="tab-count" id="review-count" hidden></span></a>
+</nav>
+
+{% if tab == "overview" %}
+<div class="dashboard-filters">
+    <div class="segmented" role="tablist" aria-label="Time range" id="period">
+        <button type="button" role="tab" data-days="7">Last 7 days</button>
+        <button type="button" role="tab" data-days="30">Last 30 days</button>
+        <button type="button" role="tab" data-days="90">Last 90 days</button>
+    </div>
+    <span class="subtle" id="period-label"></span>
+</div>
+<div class="dashboard" id="overview">
+    <section class="grid grid-stats" id="stats" aria-label="Key numbers">
+        {% for _ in range(4) %}<article class="card stat-card"><span class="skeleton" style="width: 70%; height: 46px;"></span></article>{% endfor %}
+    </section>
+    <div class="grid dashboard-main">
+        <section class="card">
+            <div class="card-header"><div><h2>Questions asked</h2><p id="daily-sub">Per day</p></div></div>
+            <div class="card-body"><div class="chart" id="daily-chart"></div></div>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>How questions were answered</h2><p>Assistant replies in this period</p></div></div>
+            <div class="card-body" id="sources"></div>
+        </section>
+    </div>
+    <div class="grid grid-2">
+        <section class="card">
+            <div class="card-header"><div><h2>Most asked</h2><p>Grouped by wording</p></div></div>
+            <ol class="rank-list" id="frequent"></ol>
+        </section>
+        <section class="card">
+            <div class="card-header">
+                <div><h2>Most asked without an answer</h2><p>Good candidates for new questions &amp; answers</p></div>
+                <a class="card-link" href="{{ url_for('admin.monitoring', tab='review') }}">Needs review</a>
+            </div>
+            <ol class="rank-list" id="unanswered"></ol>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>Top configured answers</h2><p>Your questions &amp; answers used most</p></div></div>
+            <ol class="rank-list" id="top-configured"></ol>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>Top knowledge entries</h2><p>Knowledge base entries used most</p></div></div>
+            <ol class="rank-list" id="top-knowledge"></ol>
+        </section>
+    </div>
+</div>
+{% else %}
+<section class="card"><div id="table"></div></section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, icon, formatDateTime, relativeTime, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+    import { columnChart, barList } from "{{ url_for('static', filename='admin/js/charts.js') }}";
+    import { reviewActions } from "{{ url_for('static', filename='admin/js/review-actions.js') }}";
+
+    const TAB = {{ tab | tojson }};
+    const CAN_REVIEW = {{ "true" if can_review else "false" }};
+    const CAN_ADD = {{ "true" if can_add else "false" }};
+    const LOCALE = document.documentElement.dataset.locale || undefined;
+    const $ = (id) => document.getElementById(id);
+    const QUESTION_URL = (id) => `{{ url_for('admin.questions') }}/${id}`;
+    const KNOWLEDGE_URL = (id) => `{{ url_for('admin.knowledge') }}/${id}`;
+    const CONVERSATION_URL = (id) => `{{ url_for('admin.monitoring') }}/${id}`;
+    const SOURCE_LABELS = { configured: "Configured answer", knowledge: "Knowledge base", ai: "AI-generated", fallback: "Fallback" };
+    const SOURCE_HINTS = { configured: "Questions & answers you wrote", knowledge: "Matched a knowledge entry", ai: "Written by the AI model", fallback: "No answer found" };
+    const number = (n) => (n ?? 0).toLocaleString(LOCALE);
+    const plural = (n, word) => `${number(n)} ${word}${n === 1 ? "" : "s"}`;
+    const day = (iso, options) => new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: "UTC" }).format(new Date(iso + "T00:00:00Z"));
+    const when = (iso) => el("span", { class: "nowrap", title: formatDateTime(iso) }, relativeTime(iso));
+
+    async function refreshReviewCount() {
+        try {
+            const { open_total } = await api("/api/admin/conversations/review", { params: { per_page: 1 } });
+            $("review-count").hidden = !open_total;
+            $("review-count").textContent = open_total;
+        } catch { /* badge only */ }
+    }
+
+    const actions = reviewActions({ canReview: CAN_REVIEW, canAddQuestion: CAN_ADD, onChange: () => { table?.reload(); refreshReviewCount(); if (TAB === "overview") loadOverview(); } });
+    let table = null;
+
+    // ---------- Overview ----------
+
+    let days = 30, chart;
+    function rankList(node, items, render, emptyText) {
+        node.replaceChildren(...(items.length ? items.map((item) => el("li", {}, render(item), el("span", { class: "rank-count" }, number(item.count))))
+            : [el("li", { class: "rank-empty" }, emptyText)]));
+    }
+
+    function stat(label, value, iconName, hint) {
+        return el("article", { class: "card stat-card" }, el("div", { class: "stat-icon" }, icon(iconName, 20)),
+            el("div", {}, el("p", { class: "stat-label" }, label), el("p", { class: "stat-value" }, value), el("p", { class: "stat-hint" }, hint)));
+    }
+
+    async function loadOverview() {
+        document.querySelectorAll("#period button").forEach((b) => b.setAttribute("aria-selected", String(Number(b.dataset.days) === days)));
+        $("overview").classList.add("is-refreshing");
+        try {
+            const data = await api("/api/admin/conversations/stats", { params: { days } });
+            const t = data.totals;
+            $("period-label").textContent = `${day(data.period.first, { day: "numeric", month: "short" })} – ${day(data.period.last, { day: "numeric", month: "short", year: "numeric" })}`;
+            $("stats").replaceChildren(
+                stat("Conversations", number(t.conversations), "message", plural(t.people, "person") .replace("persons", "people") + " used AI Chat"),
+                stat("Questions asked", number(t.questions), "help-circle", t.conversations ? `${(t.questions / t.conversations).toFixed(1)} per conversation` : "None in this period"),
+                stat("Answered", t.answered_rate === null ? "—" : `${Math.round(t.answered_rate * 100)}%`, "check-circle", "without the fallback answer"),
+                stat("Needs review", number(t.open_reviews), "alert", t.open_reviews ? "Unanswered questions to look at" : "Nothing waiting"),
+            );
+            const points = data.daily.map((d) => {
+                const total = d.configured + d.knowledge + d.ai + d.fallback;
+                return { label: day(d.date, { weekday: "short", day: "numeric", month: "short" }), short: day(d.date, { day: "numeric", month: "short" }),
+                    value: total, extra: d.fallback ? `${number(d.fallback)} without an answer` : "" };
+            });
+            if (chart) chart.update(points); else chart = columnChart($("daily-chart"), { points, valueLabel: "Questions" });
+            $("daily-sub").textContent = t.questions ? `${plural(t.questions, "question")} in this period` : "No questions in this period yet.";
+            const total = data.sources.reduce((s, r) => s + r.count, 0);
+            if (total) barList($("sources"), data.sources.map((s) => ({ label: SOURCE_LABELS[s.source], hint: SOURCE_HINTS[s.source], value: s.count })));
+            else $("sources").replaceChildren(el("p", { class: "subtle" }, "No answers in this period yet."));
+
+            rankList($("frequent"), data.frequent_questions, (q) => el("span", { class: "rank-text" }, q.text), "No questions yet.");
+            rankList($("unanswered"), data.frequent_unanswered, (q) => el("span", { class: "rank-text" }, q.text,
+                CAN_ADD ? el("button", { class: "link-button rank-action", type: "button", onclick: () => actions.addAsQuestion({ question: q.text }) }, "Answer this") : null),
+                "Every question got an answer. 🎉");
+            rankList($("top-configured"), data.top_configured, (q) => el("a", { class: "rank-text", href: QUESTION_URL(q.id) }, q.text), "No configured answers used yet.");
+            rankList($("top-knowledge"), data.top_knowledge, (k) => el("a", { class: "rank-text", href: KNOWLEDGE_URL(k.id) }, k.title), "No knowledge entries used yet.");
+        } catch (error) { toastError(error); }
+        $("overview").classList.remove("is-refreshing");
+    }
+
+    // ---------- All conversations ----------
+
+    function conversationsTable() {
+        return new DataTable($("table"), {
+            endpoint: "/api/admin/conversations",
+            searchPlaceholder: "Search messages, names or emails…",
+            filters: [
+                { name: "status", label: "All conversations", options: [{ value: "needs_review", label: "With unanswered questions" }] },
+                { name: "source", label: "Any answer source", options: Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label })) },
+            ],
+            columns: [
+                { key: "title", label: "First question", className: "cell-primary cell-wrap",
+                  render: (r) => el("a", { href: CONVERSATION_URL(r.id) }, r.title) },
+                { key: "user", label: "Asked by", render: (r) => r.user ? el("span", { title: r.user.email }, r.user.name) : el("span", { class: "subtle" }, "Deleted user") },
+                { key: "questions", label: "Questions", render: (r) => String(r.questions) },
+                { key: "flags", label: "", render: (r) => el("span", { class: "badge-row" },
+                    r.open_reviews ? badge(`${r.open_reviews} unanswered`, "warning") : null,
+                    r.ai_answers ? badge(`${r.ai_answers} AI`, "info") : null) },
+                { key: "last_message_at", label: "Last message", render: (r) => when(r.last_message_at) },
+            ],
+            rowActions: (r) => [{ label: "Open conversation", onClick: () => { window.location.href = CONVERSATION_URL(r.id); } }],
+            empty: { title: "No conversations yet", text: "Conversations appear here as soon as someone uses AI Chat." },
+        });
+    }
+
+    // ---------- Needs review ----------
+
+    function reviewTable() {
+        return new DataTable($("table"), {
+            endpoint: "/api/admin/conversations/review",
+            searchPlaceholder: "Search questions…",
+            filters: [{ name: "status", label: "Not reviewed yet", options: [{ value: "reviewed", label: "Reviewed" }, { value: "all", label: "All" }] }],
+            columns: [
+                { key: "question", label: "Question", className: "cell-primary cell-wrap" },
+                { key: "user", label: "Asked by", render: (r) => r.user ? el("span", { title: r.user.email }, r.user.name) : el("span", { class: "subtle" }, "Deleted user") },
+                { key: "created_at", label: "Asked", render: (r) => when(r.created_at) },
+                { key: "status", label: "Status", render: (r) => r.reviewed_at
+                    ? el("span", { title: formatDateTime(r.reviewed_at) }, badge("Reviewed", "success")) : badge("Needs review", "warning") },
+            ],
+            rowActions: (r) => actions.rowActions(r),
+            empty: { title: "Nothing needs review", text: "Questions AI Chat couldn't answer will appear here." },
+        });
+    }
+
+    if (TAB === "overview") {
+        try { days = Number(localStorage.getItem("conversations-days")) || 30; } catch {}
+        if (![7, 30, 90].includes(days)) days = 30;
+        $("period").addEventListener("click", (event) => {
+            const button = event.target.closest("button[data-days]");
+            if (!button) return;
+            days = Number(button.dataset.days);
+            try { localStorage.setItem("conversations-days", String(days)); } catch {}
+            loadOverview();
+        });
+        loadOverview();
+    } else {
+        table = TAB === "review" ? reviewTable() : conversationsTable();
+    }
+    refreshReviewCount();
+</script>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("knowledge.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Knowledge base</h1>
+        <p>Information the assistant uses when no configured question matches. Only entries that are <strong>published</strong> and <strong>available to AI Chat</strong> are used.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <a class="btn btn-primary" href="{{ url_for('admin.knowledge_new') }}">{{ icon("plus", 16) }}New entry</a>
+    </div>
+    {% endif %}
+</div>
+
+<p class="delivery-status" id="summary"></p>
+
+<div class="segmented" role="tablist" aria-label="Section" style="margin-bottom: 14px;">
+    <button type="button" role="tab" data-tab="entries">{{ icon("book-open", 16) }}Entries</button>
+    <button type="button" role="tab" data-tab="categories">{{ icon("folder", 16) }}Categories</button>
+    <button type="button" role="tab" data-tab="test">{{ icon("search", 16) }}Test a question</button>
+</div>
+
+<section class="card" id="entries-panel" aria-label="Knowledge entries"></section>
+<section class="card" id="categories-panel" aria-label="Knowledge categories" hidden></section>
+
+<section class="card" id="test-panel" hidden>
+    <div class="card-header"><div><h2>Which entry would answer this?</h2>
+        <p>Type a question the way a user would. You'll see the entry AI Chat would use and the closest candidates.</p></div></div>
+    <form class="card-body" id="test-form" novalidate>
+        <div class="add-row" style="margin: 0;">
+            <label class="sr-only" for="test-question">Question</label>
+            <input class="input" id="test-question" name="question" maxlength="500" placeholder="e.g. Kapan ujian matematika?" style="flex: 1;">
+            <button class="btn btn-primary" type="submit">Test</button>
+        </div>
+        <div id="test-result" style="margin-top: 16px;"></div>
+    </form>
+</section>
+
+<template id="category-form">
+    <div class="field">
+        <label class="required" for="kc-name">Name</label>
+        <input class="input" id="kc-name" name="name" maxlength="100">
+    </div>
+    <div class="field">
+        <label for="kc-slug">Slug</label>
+        <input class="input" id="kc-slug" name="slug" maxlength="120" placeholder="Generated from the name">
+        <p class="hint">Short ID. The built-in categories (schedule, announcement, administration) also help the question classifier.</p>
+    </div>
+    <div class="field">
+        <label for="kc-description">Description</label>
+        <textarea class="textarea" id="kc-description" name="description" maxlength="1000" style="min-height: 80px;"></textarea>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, icon, confirmDialog, openFormModal, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, switchControl } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const editUrl = (id) => `{{ url_for('admin.knowledge') }}/${id}`;
+    const params = () => new URLSearchParams(location.search);
+    function setParam(key, value) {
+        const p = params(); value ? p.set(key, value) : p.delete(key);
+        history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : ""));
+    }
+    const size = (bytes) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+    // ---------- summary ----------
+
+    async function loadSummary() {
+        try {
+            const s = await api("/api/admin/knowledge/summary");
+            document.getElementById("summary").replaceChildren(...[
+                badge(`${s.in_chat} used by AI Chat`, "success"),
+                s.hidden ? badge(`${s.hidden} hidden`, "") : null,
+                el("span", { class: "subtle" }, `${s.total} entries · ${s.documents} with documents · ${s.categories} categories`),
+            ].filter(Boolean));
+        } catch (error) { toastError(error); }
+    }
+
+    function toggle(entry, field, label) {
+        if (!CAN_WRITE) return entry[field] ? badge("Yes", "success") : badge("No");
+        return switchControl({
+            checked: entry[field], label: `${label}: ${entry.title}`,
+            onChange: async (value) => {
+                await api(`/api/admin/knowledge/${entry.id}`, { method: "PATCH", body: { [field]: value } });
+                entry[field] = value;
+                toast(field === "available_to_ai"
+                    ? (value ? "AI Chat can use this entry." : "AI Chat will no longer use this entry.")
+                    : (value ? "Entry published." : "Entry unpublished. AI Chat won't use it."));
+                loadSummary();
+            },
+        });
+    }
+
+    // ---------- entries ----------
+
+    let entries = null;
+    function ensureEntries() {
+        if (entries) return entries.reload();
+        entries = new DataTable(document.getElementById("entries-panel"), {
+            endpoint: "/api/admin/knowledge",
+            searchPlaceholder: "Search title, content, keywords, documents…",
+            filters: [
+                { name: "category", label: "All categories" },
+                { name: "usage", label: "Any visibility", options: [
+                    { value: "chat", label: "Used by AI Chat" }, { value: "hidden", label: "Hidden from AI Chat" },
+                    { value: "draft", label: "Unpublished" }] },
+                { name: "document", label: "With or without document", options: [{ value: "yes", label: "Has a document" }] },
+            ],
+            columns: [
+                { key: "title", label: "Entry", className: "cell-main",
+                  render: (e) => el("div", {},
+                      el("a", { class: "cell-primary", href: editUrl(e.id) }, e.title),
+                      e.external_ref ? el("span", { class: "chip", style: "margin-left:6px" }, e.external_ref) : null,
+                      el("div", { class: "cell-secondary" }, e.excerpt + (e.excerpt.length >= 160 ? "…" : ""))) },
+                { key: "category", label: "Category", render: (e) => e.category.name },
+                { key: "document", label: "Document", render: (e) => e.document
+                    ? el("span", { class: "chip", title: e.document.name }, icon("file-text", 12), e.document.type.toUpperCase(), " · ", size(e.document.size))
+                    : el("span", { class: "subtle" }, "—") },
+                { key: "is_published", label: "Published", render: (e) => toggle(e, "is_published", "Published") },
+                { key: "available_to_ai", label: "AI Chat", render: (e) => toggle(e, "available_to_ai", "Available to AI Chat") },
+                { key: "updated_at", label: "Updated", render: (e) => el("span", { class: "nowrap" }, relativeTime(e.updated_at)) },
+            ],
+            rowActions: (e) => [
+                { label: CAN_WRITE ? "Edit" : "View", onClick: () => { location.href = editUrl(e.id); } },
+                CAN_WRITE && { label: "Delete", danger: true, onClick: () => removeEntry(e) },
+            ],
+            empty: { title: "No knowledge entries yet", text: CAN_WRITE ? "Add school information the assistant can use." : "" },
+        });
+        api("/api/admin/knowledge/categories/options")
+            .then((cats) => entries.setFilterOptions("category", cats.map((c) => ({ value: c.id, label: c.name }))))
+            .catch(toastError);
+    }
+
+    async function removeEntry(entry) {
+        const extra = entry.document ? ` Its document “${entry.document.name}” will be deleted too.` : "";
+        if (!await confirmDialog({ title: `Delete “${entry.title}”?`, message: `AI Chat will stop using it.${extra} This can't be undone.` })) return;
+        try {
+            await api(`/api/admin/knowledge/${entry.id}`, { method: "DELETE" });
+            toast("Entry deleted.");
+            entries.reload(); loadSummary();
+        } catch (error) { toastError(error); }
+    }
+
+    // ---------- categories ----------
+
+    let categories = null;
+    function ensureCategories() {
+        if (categories) return categories.reload();
+        categories = new DataTable(document.getElementById("categories-panel"), {
+            endpoint: "/api/admin/knowledge/categories",
+            searchPlaceholder: "Search categories…",
+            columns: [
+                { key: "name", label: "Category", render: (c) => el("div", {}, el("div", { class: "cell-primary" }, c.name), el("div", { class: "cell-secondary" }, c.slug)) },
+                { key: "description", label: "Description", className: "cell-wrap" },
+                { key: "entry_count", label: "Entries",
+                  render: (c) => el("a", { class: "card-link", href: `{{ url_for('admin.knowledge') }}?category=${c.id}` }, String(c.entry_count)) },
+            ],
+            rowActions: (c) => CAN_WRITE ? [
+                { label: "Edit", onClick: () => editCategory(c) },
+                { label: "Delete", danger: true, onClick: () => removeCategory(c) },
+            ] : [],
+            toolbarExtra: CAN_WRITE ? el("button", { class: "btn btn-secondary btn-sm", type: "button", onclick: () => editCategory(null) }, icon("plus", 14), "New category") : null,
+            empty: { title: "No categories yet" },
+        });
+    }
+
+    async function editCategory(category) {
+        const saved = await openFormModal({
+            title: category ? "Edit category" : "New category", template: "#category-form",
+            values: category ? { name: category.name, slug: category.slug, description: category.description } : undefined,
+            submitText: category ? "Save" : "Create category",
+            onSubmit: (data) => api(category ? `/api/admin/knowledge/categories/${category.id}` : "/api/admin/knowledge/categories",
+                                    { method: category ? "PUT" : "POST", body: data }),
+        });
+        if (saved) { toast(category ? "Category saved." : "Category created."); categories.reload(); loadSummary(); }
+    }
+
+    async function removeCategory(category) {
+        if (category.entry_count) return toastError(new Error(`“${category.name}” still has ${category.entry_count} entries. Move or delete them first.`));
+        if (!await confirmDialog({ title: `Delete “${category.name}”?`, message: "This can't be undone." })) return;
+        try {
+            await api(`/api/admin/knowledge/categories/${category.id}`, { method: "DELETE" });
+            toast("Category deleted.");
+            categories.reload(); loadSummary();
+        } catch (error) { toastError(error); }
+    }
+
+    // ---------- test ----------
+
+    document.getElementById("test-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const question = document.getElementById("test-question").value.trim();
+        const box = document.getElementById("test-result");
+        if (!question) return document.getElementById("test-question").focus();
+        try {
+            const r = await api("/api/admin/knowledge/test-match", { method: "POST", body: { question } });
+            const best = r.candidates[0]?.score || 1;
+            box.replaceChildren(...[
+                r.answer
+                    ? el("div", { class: "alert alert-success" }, "AI Chat would answer with ", el("a", { href: editUrl(r.answer.id), style: "font-weight:700" }, r.answer.title), ".")
+                    : el("div", { class: "alert alert-info" }, "No entry is a confident match, so this question would go to the AI (if enabled) or get the fallback answer."),
+                r.predicted_category ? el("p", { class: "subtle", style: "margin-bottom:10px" },
+                    `Classifier guess: ${r.predicted_category} (${Math.round((r.confidence || 0) * 100)}% confident).`) : null,
+                r.candidates.length ? el("ol", { class: "match-list" }, ...r.candidates.map((c) => el("li", {},
+                    el("div", { class: "match-head" },
+                        el("a", { href: editUrl(c.id), class: "cell-primary" }, c.title),
+                        c.keyword_match ? badge("keyword match", "accent") : null,
+                        !c.used_by_chat ? badge("not used by AI Chat", "warning") : null,
+                        el("span", { class: "subtle", style: "margin-left:auto" }, `score ${c.score}`)),
+                    el("div", { class: "match-bar" }, el("span", { style: `width:${Math.min(100, (c.score / best) * 100)}%` })),
+                ))) : el("p", { class: "subtle" }, "No entry shares any words with this question."),
+            ].filter(Boolean));
+        } catch (error) { toastError(error); }
+    });
+
+    // ---------- tabs ----------
+
+    function showTab(tab) {
+        setParam("tab", tab === "entries" ? "" : tab);
+        for (const name of ["entries", "categories", "test"]) {
+            document.getElementById(`${name}-panel`).hidden = name !== tab;
+        }
+        document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+        if (tab === "entries") ensureEntries();
+        if (tab === "categories") ensureCategories();
+        if (tab === "test") document.getElementById("test-question").focus();
+    }
+    document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+    showTab(["categories", "test"].includes(params().get("tab")) ? params().get("tab") : "entries");
+    loadSummary();
+</script>
+{% endblock %}

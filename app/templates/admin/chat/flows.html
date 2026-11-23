@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Conversation flows</h1>
+        <p>Guided paths: a starting question and the questions that should come next, step by step.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <a class="btn btn-primary" href="{{ url_for('admin.flow_new') }}">{{ icon("plus", 16) }}New flow</a>
+    </div>
+    {% endif %}
+</div>
+
+<section class="card" id="flows-table" aria-label="Conversation flows"></section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const editUrl = (id) => `{{ url_for('admin.flows') }}/${id}`;
+
+    const table = new DataTable(document.getElementById("flows-table"), {
+        endpoint: "/api/admin/chat/flows",
+        searchPlaceholder: "Search flows…",
+        filters: [{ name: "status", label: "Any status", options: [{ value: "enabled", label: "Enabled" }, { value: "disabled", label: "Disabled" }] }],
+        columns: [
+            { key: "name", label: "Flow", render: (f) => el("div", {}, el("a", { class: "cell-primary", href: editUrl(f.id) }, f.name), f.description ? el("div", { class: "cell-secondary" }, f.description) : null) },
+            { key: "entry_question", label: "Starts with", className: "cell-wrap", render: (f) => f.entry_question ? f.entry_question.text : el("span", { class: "subtle" }, "No starting question") },
+            { key: "step_count", label: "Steps" },
+            { key: "is_enabled", label: "Status", render: (f) => f.is_enabled ? badge("Enabled", "success") : badge("Disabled") },
+            { key: "updated_at", label: "Updated", render: (f) => relativeTime(f.updated_at) },
+        ],
+        rowActions: (f) => [
+            { label: CAN_WRITE ? "Edit" : "View", onClick: () => { window.location.href = editUrl(f.id); } },
+            CAN_WRITE && { label: "Delete", danger: true, onClick: () => remove(f) },
+        ],
+        empty: { title: "No conversation flows yet", text: "Create a flow to guide users from one question to the next." },
+    });
+
+    async function remove(flow) {
+        if (!await confirmDialog({ title: `Delete “${flow.name}”?`, message: "The questions themselves are not deleted. This can't be undone." })) return;
+        try {
+            await api(`/api/admin/chat/flows/${flow.id}`, { method: "DELETE" });
+            toast("Flow deleted.");
+            table.reload();
+        } catch (error) { toastError(error); }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,238 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Welcome back, {{ current_user.full_name.split(" ")[0] }}</h1>
+        <p>Here's what's happening in {{ branding.name }}.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="{{ url_for('main.chatbot') }}">{{ icon("message", 16) }} Open AI Chat</a>
+    </div>
+</div>
+
+<div class="dashboard-filters">
+    <div class="segmented" role="tablist" aria-label="Time range" id="period">
+        <button type="button" role="tab" data-days="7">Last 7 days</button>
+        <button type="button" role="tab" data-days="30">Last 30 days</button>
+        <button type="button" role="tab" data-days="90">Last 90 days</button>
+    </div>
+    <span class="subtle" id="period-label"></span>
+</div>
+
+<div id="dashboard" class="dashboard is-loading" aria-busy="true">
+    <section class="grid grid-stats" aria-label="Key numbers" id="stats">
+        {% for _ in range(4) %}<article class="card stat-card"><span class="skeleton" style="width: 70%; height: 46px;"></span></article>{% endfor %}
+    </section>
+
+    <div class="grid dashboard-main">
+        <section class="card">
+            <div class="card-header"><div><h2>AI Chat conversations</h2><p id="usage-sub">New conversations per day</p></div></div>
+            <div class="card-body">
+                <div class="chart" id="usage-chart"></div>
+                <details class="chart-table">
+                    <summary>View as table</summary>
+                    <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Day</th><th scope="col">Conversations</th><th scope="col">Questions asked</th></tr></thead><tbody id="usage-table"></tbody></table></div>
+                </details>
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>How questions were answered</h2><p id="sources-sub">Assistant replies in this period</p></div></div>
+            <div class="card-body" id="sources"></div>
+        </section>
+    </div>
+
+    <div class="grid grid-3">
+        <section class="card">
+            <div class="card-header">
+                <div><h2>Upcoming events</h2><p>Next five events</p></div>
+                {% if current_user.has_permission("events.read") %}<a class="card-link" href="{{ url_for('admin.events') }}">View all</a>{% endif %}
+            </div>
+            <ul class="list" id="events"></ul>
+        </section>
+        <section class="card">
+            <div class="card-header">
+                <div><h2>Recent activity</h2><p>Latest sign-ins and changes</p></div>
+                {% if current_user.has_permission("activity.read") %}<a class="card-link" href="{{ url_for('admin.activity') }}">View log</a>{% endif %}
+            </div>
+            <ul class="list" id="activity"></ul>
+        </section>
+        <section class="card">
+            <div class="card-header"><div><h2>System status</h2><p id="status-sub">Checked just now</p></div></div>
+            <ul class="list status-list" id="system"></ul>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, icon, formatDateTime, relativeTime, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { initials } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+    import { columnChart, barList } from "{{ url_for('static', filename='admin/js/charts.js') }}";
+
+    const $ = (id) => document.getElementById(id);
+    const LOCALE = document.documentElement.dataset.locale || undefined;
+    const TZ = document.body.dataset.timezone;
+    const LINKS = {
+        users: {{ (url_for('admin.users') if current_user.has_permission('users.read') else '') | tojson }},
+        questions: {{ (url_for('admin.questions') if current_user.has_permission('chatconfig.read') else '') | tojson }},
+        events: {{ (url_for('admin.events') if current_user.has_permission('events.read') else '') | tojson }},
+        notifications: {{ (url_for('admin.notifications') if current_user.has_permission('notifications.read') else '') | tojson }},
+        assistant: {{ (url_for('admin.assistant') if current_user.has_permission('assistant.read') else '') | tojson }},
+    };
+    const SOURCE_LABELS = {
+        configured: ["Configured answers", "Questions & answers you wrote"],
+        knowledge: ["Knowledge base", "Matched a knowledge entry"],
+        ai: ["AI-generated", "Written by the AI model"],
+        fallback: ["Fallback answer", "No answer found"],
+    };
+    let days = 30, chart;
+    try { days = Number(localStorage.getItem("dashboard-days")) || 30; } catch {}
+
+    const number = (n) => (n ?? 0).toLocaleString(LOCALE);
+    const plural = (n, word) => `${number(n)} ${word}${n === 1 ? "" : "s"}`;
+    // Dates from the API are plain local days ("2026-11-23"): format them without shifting timezones.
+    const day = (iso, options) => new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: "UTC" }).format(new Date(iso + "T00:00:00Z"));
+
+    function stat(label, value, iconName, hint, href) {
+        const body = [el("div", { class: "stat-icon" }, icon(iconName, 20)),
+            el("div", {}, el("p", { class: "stat-label" }, label), el("p", { class: "stat-value" }, value), el("p", { class: "stat-hint" }, hint))];
+        return href ? el("a", { class: "card stat-card is-link", href }, ...body) : el("article", { class: "card stat-card" }, ...body);
+    }
+
+    function change(current, previous) {
+        if (!previous) return current ? "New activity in this period" : `None in the previous ${days} days either`;
+        const pct = Math.round(((current - previous) / previous) * 100);
+        return pct === 0 ? `Same as the previous ${days} days` : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}% vs the previous ${days} days`;
+    }
+
+    function renderStats(t) {
+        $("stats").replaceChildren(
+            stat("Active users", number(t.users), "users",
+                t.new_users ? `${number(t.new_users)} new in this period` : (t.users_inactive ? `${number(t.users_inactive)} deactivated` : "No new accounts in this period"), LINKS.users),
+            stat("AI Chat conversations", number(t.conversations), "message", change(t.conversations, t.conversations_previous)),
+            stat("Questions answered", t.answer_rate === null ? "—" : `${Math.round(t.answer_rate * 100)}%`, "check-circle",
+                t.answer_rate === null ? "No questions asked yet" : `of ${plural(t.questions_asked, "question")}, without the fallback`),
+            stat("Upcoming events", number(t.upcoming_events), "calendar",
+                t.events_next_7_days ? `${number(t.events_next_7_days)} in the next 7 days` : "None in the next 7 days", LINKS.events),
+        );
+    }
+
+    function renderUsage(data) {
+        const points = data.daily.map((d) => ({
+            label: day(d.date, { weekday: "short", day: "numeric", month: "short" }),
+            short: day(d.date, { day: "numeric", month: "short" }),
+            value: d.conversations,
+            extra: plural(d.messages, "question") + " asked",
+        }));
+        if (chart) chart.update(points);
+        else chart = columnChart($("usage-chart"), { points, valueLabel: "Conversations" });
+        const total = data.totals.conversations;
+        $("usage-sub").textContent = total
+            ? `${plural(total, "conversation")} and ${plural(data.totals.questions_asked, "question")} in this period`
+            : "No conversations in this period yet. They'll appear here once people use AI Chat.";
+        $("usage-table").replaceChildren(...[...data.daily].reverse().map((d) => el("tr", {},
+            el("td", {}, day(d.date, { dateStyle: "medium" })), el("td", {}, number(d.conversations)), el("td", {}, number(d.messages)))));
+    }
+
+    function renderSources(data) {
+        const total = data.sources.reduce((s, r) => s + r.count, 0);
+        $("sources-sub").textContent = total ? `${plural(total, "reply")} in this period`.replace("replys", "replies") : "Assistant replies in this period";
+        if (!total) {
+            $("sources").replaceChildren(el("div", { class: "table-state" },
+                el("div", { class: "state-icon" }, icon("message", 20)), el("strong", {}, "No answers yet"),
+                el("p", {}, "Once people ask questions, you'll see how many were answered by your own content, the knowledge base, AI or the fallback.")));
+            return;
+        }
+        barList($("sources"), data.sources.map((s) => ({ label: SOURCE_LABELS[s.source][0], hint: SOURCE_LABELS[s.source][1], value: s.count })));
+        if (data.totals.needs_review) {
+            $("sources").append(el("p", { class: "subtle sources-note" }, `${plural(data.totals.needs_review, "answer")} flagged for review.`));
+        }
+    }
+
+    function empty(iconName, title, text) {
+        return el("li", { class: "table-state" }, el("div", { class: "state-icon" }, icon(iconName, 20)), el("strong", {}, title), text ? el("p", {}, text) : null);
+    }
+
+    function renderEvents(events) {
+        $("events").replaceChildren(...(events.length ? events.map((e) => el("li", { class: "list-item" },
+            el("div", { class: "date-tile" },
+                el("small", {}, formatDateTime(e.start_at, { month: "short" })),
+                el("strong", {}, formatDateTime(e.start_at, { day: "2-digit" }))),
+            el("div", { class: "list-item-main" },
+                el("p", { class: "list-item-title" }, e.title),
+                el("p", { class: "list-item-meta" }, [formatDateTime(e.start_at, { weekday: "short", hour: "2-digit", minute: "2-digit" }), e.location].filter(Boolean).join(" · "))),
+            e.status === "ongoing" ? el("span", { class: "badge badge-success" }, "Ongoing") : el("span", { class: "badge badge-accent" }, e.category),
+        )) : [empty("calendar", "No upcoming events", "Events you schedule will appear here.")]));
+    }
+
+    function renderActivity(items) {
+        if (items === null) {
+            $("activity").replaceChildren(empty("lock", "Not available", "Your role doesn't include the activity log."));
+            return;
+        }
+        $("activity").replaceChildren(...(items.length ? items.map((log) => el("li", { class: "list-item" },
+            el("span", { class: "avatar", "aria-hidden": "true" }, initials(log.actor?.name || "System")),
+            el("div", { class: "list-item-main" },
+                el("p", { class: "list-item-title" }, log.summary || log.action.replaceAll("_", " ")),
+                el("p", { class: "list-item-meta" }, `${log.actor?.name || "System"} · `,
+                    el("time", { datetime: log.created_at, title: formatDateTime(log.created_at) }, relativeTime(log.created_at)))),
+        )) : [empty("activity", "No activity yet")]));
+    }
+
+    const STATE = {
+        ok: ["check-circle", "OK", "status-ok"], warning: ["alert", "Attention", "status-warning"],
+        error: ["alert", "Problem", "status-error"], off: ["x", "Off", "status-off"],
+    };
+    const STATUS_LINKS = { ai: LINKS.assistant, notifications: LINKS.notifications };
+
+    function renderSystem(checks, generatedAt) {
+        $("status-sub").textContent = `Checked ${relativeTime(generatedAt)}`;
+        $("system").replaceChildren(...checks.map((c) => {
+            const [iconName, word, cls] = STATE[c.state];
+            const meta = c.last_run ? `${c.detail} · last run ${relativeTime(c.last_run)}` : c.detail;
+            const title = STATUS_LINKS[c.key] ? el("a", { class: "list-item-title", href: STATUS_LINKS[c.key] }, c.label) : el("p", { class: "list-item-title" }, c.label);
+            return el("li", { class: `list-item ${cls}` },
+                el("span", { class: "status-icon", "aria-hidden": "true" }, icon(iconName, 16)),
+                el("div", { class: "list-item-main" }, title, el("p", { class: "list-item-meta" }, meta)),
+                el("span", { class: "status-word" }, word));
+        }));
+    }
+
+    async function load() {
+        document.querySelectorAll("#period button").forEach((b) => b.setAttribute("aria-selected", String(Number(b.dataset.days) === days)));
+        const root = $("dashboard");
+        root.classList.add("is-refreshing");
+        try {
+            const data = await api("/api/admin/dashboard", { params: { days } });
+            $("period-label").textContent = `${day(data.period.first, { day: "numeric", month: "short" })} – ${day(data.period.last, { day: "numeric", month: "short", year: "numeric" })} · ${TZ.replaceAll("_", " ")}`;
+            renderStats(data.totals);
+            renderUsage(data);
+            renderSources(data);
+            renderEvents(data.upcoming_events);
+            renderActivity(data.activity);
+            renderSystem(data.system, data.generated_at);
+        } catch (error) {
+            toastError(error);
+        } finally {
+            root.classList.remove("is-loading", "is-refreshing");
+            root.removeAttribute("aria-busy");
+        }
+    }
+
+    $("period").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-days]");
+        if (!button || Number(button.dataset.days) === days) return;
+        days = Number(button.dataset.days);
+        try { localStorage.setItem("dashboard-days", String(days)); } catch {}
+        load();
+    });
+    if (![7, 30, 90].includes(days)) days = 30;
+    load();
+</script>
+{% endblock %}

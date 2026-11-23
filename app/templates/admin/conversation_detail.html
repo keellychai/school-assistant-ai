@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_review = current_user.has_permission("monitoring.write") %}
+{% set can_add = current_user.has_permission("chatconfig.write") %}
+
+{% block title %}Conversation{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>Conversation</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a class="card-link" href="{{ url_for('admin.monitoring', tab='all') }}">← All conversations</a>
+        <h1 style="margin-top: 4px;" id="title">Conversation</h1>
+        <p class="muted" id="meta"></p>
+    </div>
+</div>
+
+<div class="editor-layout">
+    <section class="card">
+        <div class="card-header"><div><h2>Transcript</h2><p>Exactly what the person saw, with how each answer was chosen.</p></div></div>
+        <div class="transcript" id="transcript" aria-busy="true"><p class="subtle">Loading…</p></div>
+    </section>
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Summary</h2></div></div>
+            <div class="card-body"><dl class="facts" id="facts"></dl></div>
+        </section>
+        <section class="card">
+            <div class="card-body">
+                <p class="subtle">Answers come from, in order: your configured questions, the knowledge base, AI (when it's on) and finally the fallback answer.</p>
+            </div>
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, formatDateTime, relativeTime, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+    import { reviewActions } from "{{ url_for('static', filename='admin/js/review-actions.js') }}";
+
+    const ID = {{ session.public_id | tojson }};
+    const CAN_REVIEW = {{ "true" if can_review else "false" }};
+    const CAN_ADD = {{ "true" if can_add else "false" }};
+    const $ = (id) => document.getElementById(id);
+    const QUESTION_URL = (id) => `{{ url_for('admin.questions') }}/${id}`;
+    const KNOWLEDGE_URL = (id) => `{{ url_for('admin.knowledge') }}/${id}`;
+    const SOURCE = {
+        configured: ["Configured answer", "accent"], knowledge: ["Knowledge base", "info"],
+        ai: ["AI-generated", "info"], fallback: ["Fallback answer", "warning"],
+    };
+    const fact = (term, value) => [el("dt", {}, term), el("dd", {}, value)];
+    const actions = reviewActions({ canReview: CAN_REVIEW, canAddQuestion: CAN_ADD, onChange: () => load() });
+
+    function provenance(message, asked) {
+        const [label, variant] = SOURCE[message.resolved_by] || ["Answer", ""];
+        const parts = [badge(label, variant)];
+        if (message.question) parts.push(el("a", { href: QUESTION_URL(message.question.id) }, message.question.text));
+        if (message.knowledge) parts.push(el("a", { href: KNOWLEDGE_URL(message.knowledge.id) }, message.knowledge.title));
+        if (message.confidence !== null && message.resolved_by === "configured") parts.push(el("span", { class: "subtle" }, `match ${Math.round(message.confidence * 100)}%`));
+        if (message.needs_review) {
+            parts.push(message.reviewed_at
+                ? el("span", { class: "subtle", title: formatDateTime(message.reviewed_at) }, `Reviewed ${relativeTime(message.reviewed_at)}`)
+                : badge("Needs review", "warning"));
+            const item = { id: message.id, question: asked?.text || "", reviewed_at: message.reviewed_at };
+            if (CAN_ADD) parts.push(el("button", { class: "btn btn-secondary btn-sm", type: "button", onclick: () => actions.addAsQuestion(item) }, "Answer this question…"));
+            if (CAN_REVIEW) parts.push(el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => actions.setReviewed([message.id], !message.reviewed_at) },
+                message.reviewed_at ? "Move back to Needs review" : "Mark as reviewed"));
+        }
+        return el("div", { class: "provenance" }, ...parts);
+    }
+
+    function render(data) {
+        const person = data.user ? data.user.name : "Deleted user";
+        $("title").textContent = data.messages.find((m) => m.role === "user")?.text.slice(0, 90) || "Conversation";
+        $("meta").textContent = `${person}${data.user ? " · " + data.user.email : ""}`;
+        const replies = data.messages.filter((m) => m.role === "assistant");
+        const count = (s) => replies.filter((m) => m.resolved_by === s).length;
+        $("facts").replaceChildren(
+            ...fact("Asked by", person),
+            ...fact("Started", formatDateTime(data.started_at)),
+            ...fact("Last message", data.last_message_at ? relativeTime(data.last_message_at) : "—"),
+            ...fact("Questions", String(data.messages.length - replies.length)),
+            ...fact("Configured / knowledge", `${count("configured")} / ${count("knowledge")}`),
+            ...fact("AI / fallback", `${count("ai")} / ${count("fallback")}`),
+        );
+        let asked = null;
+        $("transcript").replaceChildren(...data.messages.map((m) => {
+            if (m.role === "user") {
+                asked = m;
+                return el("div", { class: "turn turn-user" },
+                    el("div", { class: "turn-bubble" }, m.text),
+                    el("span", { class: "turn-time", title: formatDateTime(m.created_at) }, `${person} · ${formatDateTime(m.created_at, { timeStyle: "short" })}`));
+            }
+            const body = el("div", { class: "turn-bubble rendered-markdown" });
+            body.innerHTML = m.html;  // server-rendered, sanitised Markdown
+            return el("div", { class: `turn turn-bot${m.needs_review && !m.reviewed_at ? " is-flagged" : ""}` }, body, provenance(m, asked));
+        }));
+        $("transcript").setAttribute("aria-busy", "false");
+    }
+
+    async function load() {
+        try { render(await api(`/api/admin/conversations/${encodeURIComponent(ID)}`)); }
+        catch (error) { toastError(error); }
+    }
+    load();
+</script>
+{% endblock %}

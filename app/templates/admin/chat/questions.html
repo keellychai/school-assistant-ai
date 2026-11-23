@@ -1,0 +1,244 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Questions &amp; answers</h1>
+        <p>Everything AI Chat can answer from your own content. Changes appear in the chat immediately.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <button class="btn btn-secondary" type="button" id="reorder-suggested">{{ icon("arrow-up-down", 16) }}Suggested order</button>
+        <button class="btn btn-primary" type="button" id="new-question">{{ icon("plus", 16) }}New question</button>
+    </div>
+    {% endif %}
+</div>
+
+<section class="card" style="margin-bottom: 18px;">
+    <div class="card-header">
+        <div>
+            <h2>Fallback answer</h2>
+            <p>Shown when a user's question doesn't match any question or knowledge entry (and AI is off).</p>
+        </div>
+        {% if can_write %}<button class="btn btn-secondary btn-sm" type="button" id="edit-fallback">Edit</button>{% endif %}
+    </div>
+    <div class="card-body"><p id="fallback-text" class="muted">Loading…</p></div>
+</section>
+
+<section class="card" id="questions-table" aria-label="Configured questions"></section>
+
+<template id="question-form">
+    <div class="field">
+        <label class="required" for="q-text">Question</label>
+        <input class="input" id="q-text" name="text" maxlength="500" placeholder="e.g. How do I create an event?">
+        <p class="hint">Written the way a user would ask it. Shown as a button when suggested.</p>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label class="required" for="q-category">Category</label>
+            <select class="select" id="q-category" name="category_id" data-type="number"></select>
+        </div>
+        <div class="field">
+            <label for="q-order">Display order</label>
+            <input class="input" id="q-order" name="display_order" type="number" min="0" data-type="number" value="0">
+        </div>
+    </div>
+    <div class="field">
+        <label for="q-keywords">Keywords</label>
+        <input class="input" id="q-keywords" name="keywords" data-type="list" placeholder="create event, new event, add schedule">
+        <p class="hint">Comma-separated words or phrases that should match this question.</p>
+    </div>
+    <div class="field">
+        <label for="q-answer">Answer</label>
+        <textarea class="textarea" id="q-answer" name="answer" placeholder="You can use **bold**, lists and [links](https://example.com)."></textarea>
+        <p class="hint">Optional now: you can add answers, links and a template on the next screen.</p>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <span class="field-label">Suggested question</span>
+            <label class="switch"><input type="checkbox" name="is_suggested"><span class="switch-track"></span>Show as a button when chat opens</label>
+        </div>
+        <div class="field">
+            <span class="field-label">Status</span>
+            <label class="switch"><input type="checkbox" name="is_enabled" checked><span class="switch-track"></span>Enabled</label>
+        </div>
+    </div>
+</template>
+
+<template id="fallback-form">
+    <div class="field">
+        <label class="required" for="fb-text">Fallback answer</label>
+        <textarea class="textarea" id="fb-text" name="fallback_answer" maxlength="2000"></textarea>
+        <p class="hint">Keep it helpful: suggest rephrasing or who to contact.</p>
+    </div>
+</template>
+
+<template id="suggested-form">
+    <p class="muted" style="margin-bottom: 14px;">Suggested questions appear as buttons when a user opens AI Chat, in this order.</p>
+    <ol class="order-list" data-suggested-list></ol>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, openFormModal, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect, move, orderButtons, switchControl } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const editUrl = (id) => `{{ url_for('admin.questions') }}/${id}`;
+    let categories = [];
+
+    const table = new DataTable(document.getElementById("questions-table"), {
+        endpoint: "/api/admin/chat/questions",
+        searchPlaceholder: "Search questions or keywords…",
+        filters: [
+            { name: "category", label: "All categories" },
+            { name: "status", label: "Any status", options: [{ value: "enabled", label: "Enabled" }, { value: "disabled", label: "Disabled" }] },
+            { name: "suggested", label: "Suggested or not", options: [{ value: "yes", label: "Suggested" }, { value: "no", label: "Not suggested" }] },
+            { name: "answer", label: "Any answer state", options: [{ value: "missing", label: "Missing an answer" }] },
+        ],
+        columns: [
+            {
+                key: "text", label: "Question", className: "cell-main",
+                render: (q) => el("div", {},
+                    el("a", { class: "cell-primary", href: editUrl(q.id) }, q.text),
+                    q.keywords.length ? el("div", { class: "chip-list" }, ...q.keywords.slice(0, 5).map((k) => el("span", { class: "chip" }, k)),
+                        q.keywords.length > 5 ? el("span", { class: "chip" }, `+${q.keywords.length - 5}`) : null) : null),
+            },
+            {
+                key: "category", label: "Category",
+                render: (q) => el("span", {}, q.category.name, q.category.is_enabled ? null : el("span", { class: "subtle" }, " (hidden)")),
+            },
+            {
+                key: "answer", label: "Answer",
+                render: (q) => q.has_active_answer ? badge("Answered", "success") : badge("No active answer", "warning"),
+            },
+            {
+                key: "suggested", label: "Suggested",
+                render: (q) => q.is_suggested ? badge(`#${q.display_order}`, "accent") : el("span", { class: "subtle" }, "—"),
+            },
+            { key: "follow_up_count", label: "Follow-ups" },
+            { key: "updated_at", label: "Updated", render: (q) => el("span", { class: "nowrap" }, relativeTime(q.updated_at)) },
+            {
+                key: "is_enabled", label: "Enabled",
+                render: (q) => CAN_WRITE
+                    ? switchControl({
+                        checked: q.is_enabled, label: `Enable “${q.text}”`,
+                        onChange: async (value) => {
+                            await api(`/api/admin/chat/questions/${q.id}`, { method: "PATCH", body: { is_enabled: value } });
+                            q.is_enabled = value;
+                            toast(value ? "Question enabled." : "Question disabled. It no longer appears in AI Chat.");
+                        },
+                    })
+                    : (q.is_enabled ? badge("Enabled", "success") : badge("Disabled")),
+            },
+        ],
+        rowActions: (q) => [
+            { label: CAN_WRITE ? "Edit" : "View", onClick: () => { window.location.href = editUrl(q.id); } },
+            CAN_WRITE && { label: q.is_suggested ? "Remove from suggested" : "Add to suggested", onClick: () => toggleSuggested(q) },
+            CAN_WRITE && { label: "Delete", danger: true, onClick: () => deleteQuestion(q) },
+        ],
+        empty: CAN_WRITE
+            ? { title: "No questions yet", text: "Create a question and its answer, and it will appear in AI Chat.", actionLabel: "New question", onAction: () => newQuestion() }
+            : { title: "No questions yet" },
+    });
+
+    async function loadCategories() {
+        categories = await api("/api/admin/chat/categories/options");
+        table.setFilterOptions("category", categories.map((c) => ({ value: c.id, label: c.name })));
+    }
+
+    async function toggleSuggested(q) {
+        try {
+            await api(`/api/admin/chat/questions/${q.id}`, { method: "PATCH", body: { is_suggested: !q.is_suggested } });
+            toast(q.is_suggested ? "Removed from suggested questions." : "Added to suggested questions.");
+            table.reload();
+        } catch (error) { toastError(error); }
+    }
+
+    async function deleteQuestion(q) {
+        const detail = await api(`/api/admin/chat/questions/${q.id}`).catch(() => null);
+        const extras = [];
+        if (detail?.answers.length) extras.push(`${detail.answers.length} answer${detail.answers.length > 1 ? "s" : ""}`);
+        if (detail?.follow_ups.length) extras.push("its follow-up links");
+        if (detail?.follow_up_of.length) extras.push(`its place as a follow-up of ${detail.follow_up_of.length} question${detail.follow_up_of.length > 1 ? "s" : ""}`);
+        if (detail?.used_in_flows) extras.push(`its steps in ${detail.used_in_flows} conversation flow${detail.used_in_flows > 1 ? "s" : ""}`);
+        const ok = await confirmDialog({
+            title: "Delete this question?",
+            message: `“${q.text}” will be removed from AI Chat${extras.length ? ", along with " + extras.join(", ") : ""}. This can't be undone.`,
+        });
+        if (!ok) return;
+        try {
+            await api(`/api/admin/chat/questions/${q.id}`, { method: "DELETE" });
+            toast("Question deleted.");
+            table.reload();
+        } catch (error) { toastError(error); }
+    }
+
+    async function newQuestion() {
+        if (!categories.length) await loadCategories();
+        if (!categories.length) {
+            toastError(new Error("Create a category first (AI Assistant → Categories)."));
+            return;
+        }
+        const created = await openFormModal({
+            title: "New question",
+            description: "It appears in AI Chat as soon as it's enabled and has an answer.",
+            template: "#question-form",
+            size: "lg",
+            submitText: "Create question",
+            onOpen: (form) => fillSelect(form.elements.category_id, categories, {
+                placeholder: "Choose a category…", label: (c) => c.name + (c.is_enabled ? "" : " (hidden)"),
+            }),
+            onSubmit: (data) => api("/api/admin/chat/questions", { method: "POST", body: data }),
+        });
+        if (created) window.location.href = editUrl(created.id) + "?created=1";
+    }
+
+    async function loadFallback() {
+        try {
+            const { fallback_answer } = await api("/api/admin/chat/fallback");
+            document.getElementById("fallback-text").textContent = fallback_answer;
+            return fallback_answer;
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("edit-fallback")?.addEventListener("click", async () => {
+        const current = await loadFallback();
+        const saved = await openFormModal({
+            title: "Fallback answer", template: "#fallback-form", values: { fallback_answer: current },
+            onSubmit: (data) => api("/api/admin/chat/fallback", { method: "PUT", body: data }),
+        });
+        if (saved) { toast("Fallback answer saved."); loadFallback(); }
+    });
+
+    document.getElementById("new-question")?.addEventListener("click", newQuestion);
+
+    document.getElementById("reorder-suggested")?.addEventListener("click", async () => {
+        let items;
+        try { items = await api("/api/admin/chat/questions/suggested"); } catch (error) { return toastError(error); }
+        if (!items.length) return toast("No suggested questions yet. Turn on “Suggested” for a question first.");
+
+        let listNode;
+        const render = () => listNode.replaceChildren(...items.map((q, i) => el("li", { class: "order-item" },
+            el("span", { class: "order-index" }, i + 1),
+            el("span", { class: "order-text" }, q.text, q.is_enabled ? null : el("span", { class: "subtle" }, " (disabled)")),
+            orderButtons({ index: i, length: items.length, onMove: (d) => { items = move(items, i, d); render(); } }),
+        )));
+
+        const saved = await openFormModal({
+            title: "Suggested question order", template: "#suggested-form", submitText: "Save order",
+            onOpen: (form) => { listNode = form.querySelector("[data-suggested-list]"); render(); },
+            onSubmit: () => api("/api/admin/chat/questions/suggested-order", { method: "PUT", body: { ids: items.map((q) => q.id) } }),
+        });
+        if (saved) { toast("Suggested order saved."); table.reload(); }
+    });
+
+    loadCategories().catch(toastError);
+    loadFallback();
+</script>
+{% endblock %}

@@ -1,0 +1,338 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("settings.write") %}
+{% set can_security = current_user.has_permission("settings.security") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>System settings</h1>
+        <p>Branding, appearance, regional format and sign-in security for the whole system. Changes apply as soon as you save.</p>
+    </div>
+</div>
+
+<div class="editor-layout">
+    <div class="stack">
+        <form class="card" id="general-form" novalidate>
+            <div class="card-header"><div><h2>Branding &amp; appearance</h2><p>Shown in the Admin Control Panel, the sign-in page and AI Chat.</p></div></div>
+            <fieldset class="card-body plain-fieldset" {% if not can_write %}disabled{% endif %}>
+                <div class="field">
+                    <span class="field-label">Logo</span>
+                    <div class="avatar-row">
+                        <span class="avatar avatar-lg logo-preview" id="logo-preview" aria-hidden="true"></span>
+                        <div class="avatar-actions">
+                            {% if can_write %}
+                            <label class="btn btn-secondary btn-sm" for="logo-file">Upload logo</label>
+                            <input class="sr-only" type="file" id="logo-file" accept="image/png,image/jpeg,image/gif,image/webp">
+                            <button class="btn btn-ghost btn-sm" type="button" id="logo-remove">Remove</button>
+                            {% endif %}
+                            <p class="hint">PNG, JPG, GIF or WebP, up to 2 MB. A square image works best. Without a logo, the first letter of the name is shown.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="g-name">App name</label>
+                        <input class="input" id="g-name" name="app_name" maxlength="60">
+                    </div>
+                    <div class="field">
+                        <label for="g-tagline">Tagline</label>
+                        <input class="input" id="g-tagline" name="app_tagline" maxlength="160">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="g-theme">Default theme</label>
+                        <select class="select" id="g-theme" name="theme_mode"></select>
+                        <p class="hint">People can still switch light/dark for themselves with the moon button.</p>
+                    </div>
+                    <div class="field">
+                        <label for="g-color">Primary colour</label>
+                        <div class="color-field">
+                            <input type="color" id="g-color-picker" aria-label="Pick a colour">
+                            <input class="input" id="g-color" name="primary_color" maxlength="7" spellcheck="false">
+                        </div>
+                        <p class="hint">Buttons, links and highlights. Pick a darker shade so white text stays readable.</p>
+                        <p class="hint contrast-warning" id="contrast-warning" hidden>This colour is light: white text on it may be hard to read.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="card-header card-header-split"><div><h2>Language &amp; region</h2><p>How dates, times and numbers are shown.</p></div></div>
+            <fieldset class="card-body plain-fieldset" {% if not can_write %}disabled{% endif %}>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="g-language">Language &amp; date format</label>
+                        <select class="select" id="g-language" name="default_language"></select>
+                        <p class="hint" id="language-sample"></p>
+                    </div>
+                    <div class="field">
+                        <label for="g-timezone">Timezone</label>
+                        <select class="select" id="g-timezone" name="timezone"></select>
+                        <p class="hint" id="timezone-sample"></p>
+                    </div>
+                </div>
+                <p class="hint">Event times are entered and shown in this timezone. Existing events keep their exact moment in time, so their local clock time shifts if you change it.</p>
+            </fieldset>
+
+            {% if can_write %}
+            <div class="card-footer">
+                <span class="dirty-note" data-dirty hidden>Unsaved changes</span>
+                <button class="btn btn-primary" type="submit">Save</button>
+            </div>
+            {% endif %}
+        </form>
+
+        <form class="card" id="security-form" novalidate>
+            <div class="card-header">
+                <div><h2>Security</h2><p>Sign-in lockout, session timeout and password rules for every account.</p></div>
+                {% if not can_security %}<span class="badge">{{ icon("lock", 12) }} View only</span>{% endif %}
+            </div>
+            <fieldset class="card-body plain-fieldset" {% if not can_security %}disabled{% endif %}>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="s-timeout">Session timeout (minutes)</label>
+                        <input class="input" id="s-timeout" name="session_timeout_minutes" type="number" data-type="number">
+                        <p class="hint" id="timeout-hint">People are signed out after this long without activity.</p>
+                    </div>
+                    <div class="field">
+                        <label class="required" for="s-password">Minimum password length</label>
+                        <input class="input" id="s-password" name="password_min_length" type="number" data-type="number">
+                        <p class="hint">Applies to new passwords. Existing passwords keep working.</p>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="s-attempts">Failed sign-ins before lockout</label>
+                        <input class="input" id="s-attempts" name="max_failed_logins" type="number" data-type="number">
+                    </div>
+                    <div class="field">
+                        <label class="required" for="s-lockout">Lockout duration (minutes)</label>
+                        <input class="input" id="s-lockout" name="lockout_minutes" type="number" data-type="number">
+                    </div>
+                </div>
+                <p class="hint" id="security-summary"></p>
+            </fieldset>
+            {% if can_security %}
+            <div class="card-footer">
+                <span class="dirty-note" data-dirty hidden>Unsaved changes</span>
+                <button class="btn btn-primary" type="submit">Save security settings</button>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Preview</h2><p>Updates as you type.</p></div></div>
+            <div class="card-body">
+                <div class="brand-preview accent-scope" id="brand-preview">
+                    <span class="brand-mark" id="preview-mark" aria-hidden="true"></span>
+                    <span class="brand-text"><strong id="preview-name"></strong><small id="preview-tagline"></small></span>
+                </div>
+                <div class="preview-actions accent-scope" id="preview-actions">
+                    <span class="btn btn-primary btn-sm" aria-hidden="true">Primary button</span>
+                    <span class="card-link">A link</span>
+                    <span class="badge badge-accent">Badge</span>
+                </div>
+            </div>
+        </section>
+        <section class="card">
+            <div class="card-body">
+                <p class="subtle" id="saved-note">Not changed yet.</p>
+                {% if not can_write %}<p class="subtle" style="margin-top: 8px;">You can view these settings but not change them.</p>{% endif %}
+            </div>
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api, upload } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, clearFieldErrors, relativeTime, showFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { fillSelect, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const $ = (id) => document.getElementById(id);
+    const general = $("general-form");
+    const security = $("security-form");
+    const guard = unsavedChangesGuard();
+    const dirty = new Set();
+    const HEX = /^#[0-9a-fA-F]{6}$/;
+    let options, data;
+
+    function setDirty(form, value) {
+        value ? dirty.add(form.id) : dirty.delete(form.id);
+        form.querySelector("[data-dirty]")?.toggleAttribute("hidden", !value);
+        guard.set(dirty.size > 0);
+    }
+
+    // Relative luminance (WCAG) to warn when white text on the colour would be hard to read.
+    function contrastWithWhite(hex) {
+        const channel = (i) => {
+            const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+            return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        };
+        const lum = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+        return 1.05 / (lum + 0.05);
+    }
+
+    function renderLogo() {
+        const url = data.settings.logo_url;
+        const name = general.elements.app_name.value || "S";
+        for (const node of [$("logo-preview"), $("preview-mark")]) {
+            node.replaceChildren();
+            if (url) node.append(el("img", { src: url, alt: "" }));
+            else node.textContent = name.trim().slice(0, 1).toUpperCase();
+        }
+        $("logo-remove")?.toggleAttribute("hidden", !url);
+    }
+
+    function updatePreview() {
+        const v = general.elements;
+        $("preview-name").textContent = v.app_name.value || "App name";
+        $("preview-tagline").textContent = v.app_tagline.value || "Admin Control Panel";
+        const color = HEX.test(v.primary_color.value) ? v.primary_color.value : null;
+        if (color) {
+            $("brand-preview").style.setProperty("--accent", color);
+            $("preview-actions").style.setProperty("--accent", color);
+            $("g-color-picker").value = color.toLowerCase();
+            $("contrast-warning").hidden = contrastWithWhite(color) >= 3;
+        }
+        renderLogo();
+
+        const locale = options.languages.find((l) => l.id === v.default_language.value)?.locale;
+        const now = new Date();
+        try {
+            $("language-sample").textContent = "Example: " + new Intl.DateTimeFormat(locale, {
+                dateStyle: "full", timeStyle: "short", timeZone: v.timezone.value }).format(now)
+                + " · " + new Intl.NumberFormat(locale).format(1234567.89);
+            $("timezone-sample").textContent = "Current time there: " + new Intl.DateTimeFormat(locale, {
+                hour: "2-digit", minute: "2-digit", timeZone: v.timezone.value, timeZoneName: "short" }).format(now);
+        } catch { $("timezone-sample").textContent = ""; }
+    }
+
+    function updateSecuritySummary() {
+        const v = security.elements;
+        const n = (name) => Number(v[name].value);
+        const minutes = n("session_timeout_minutes");
+        $("timeout-hint").textContent = minutes >= 60
+            ? `People are signed out after ${+(minutes / 60).toFixed(1)} hour${minutes === 60 ? "" : "s"} without activity.`
+            : "People are signed out after this long without activity.";
+        $("security-summary").textContent = n("max_failed_logins") && n("lockout_minutes")
+            ? `After ${n("max_failed_logins")} wrong passwords in a row, an account is locked for ${n("lockout_minutes")} minute${n("lockout_minutes") === 1 ? "" : "s"}. An admin can unlock it sooner from the user's page.`
+            : "";
+    }
+
+    function renderSaved() {
+        $("saved-note").textContent = data.updated_at
+            ? `Last saved ${relativeTime(data.updated_at)}${data.updated_by ? " by " + data.updated_by : ""}.`
+            : "Still using the default settings.";
+    }
+
+    function fill() {
+        const s = data.settings;
+        for (const name of ["app_name", "app_tagline", "theme_mode", "primary_color", "default_language", "timezone"]) {
+            general.elements[name].value = s[name] ?? "";
+        }
+        for (const [name, limit] of Object.entries(options.limits)) {
+            const input = security.elements[name];
+            input.min = limit.min; input.max = limit.max;
+            input.value = s[name];
+        }
+        updatePreview();
+        updateSecuritySummary();
+        renderSaved();
+    }
+
+    async function save(form, endpoint, body, message) {
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const result = await api(endpoint, { method: "PUT", body });
+            data = { ...data, ...result };
+            setDirty(form, false);
+            toast(result.changed.length ? message : "No changes to save.");
+            return result;
+        } catch (error) {
+            const fields = error.fields || {};
+            showFieldErrors(form, fields, Object.keys(fields).length ? "Please correct the highlighted fields." : error.message);
+            return null;
+        } finally {
+            button.disabled = false; button.classList.remove("is-loading");
+        }
+    }
+
+    general.addEventListener("input", (event) => {
+        if (event.target.id === "g-color-picker") general.elements.primary_color.value = event.target.value;
+        setDirty(general, true); updatePreview();
+    });
+    general.addEventListener("change", (event) => {
+        if (event.target.id === "logo-file") return;
+        setDirty(general, true); updatePreview();
+    });
+    security.addEventListener("input", () => { setDirty(security, true); updateSecuritySummary(); });
+
+    general.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const v = general.elements;
+        const result = await save(general, "/api/admin/settings/general", {
+            app_name: v.app_name.value, app_tagline: v.app_tagline.value, theme_mode: v.theme_mode.value,
+            primary_color: v.primary_color.value.trim(), default_language: v.default_language.value, timezone: v.timezone.value,
+        }, "Settings saved. Reloading to apply them…");
+        // Branding, theme and timezone are rendered by the server into every page: reload to apply.
+        if (result?.changed.length) setTimeout(() => window.location.reload(), 900);
+    });
+
+    security.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const v = security.elements;
+        const number = (name) => (v[name].value === "" ? null : Number(v[name].value));
+        const result = await save(security, "/api/admin/settings/security", {
+            session_timeout_minutes: number("session_timeout_minutes"), max_failed_logins: number("max_failed_logins"),
+            lockout_minutes: number("lockout_minutes"), password_min_length: number("password_min_length"),
+        }, "Security settings saved.");
+        if (result) { fill(); }
+    });
+
+    $("logo-file")?.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+            const { logo_url } = await upload("/api/admin/settings/logo", { logo: file });
+            data.settings.logo_url = logo_url;
+            renderLogo();
+            document.querySelectorAll(".sidebar-brand .brand-mark").forEach((node) => {
+                node.replaceWith(el("img", { class: "brand-mark", src: logo_url, alt: "" }));
+            });
+            toast("Logo updated.");
+        } catch (error) { toastError(error); }
+    });
+
+    $("logo-remove")?.addEventListener("click", async () => {
+        try {
+            await api("/api/admin/settings/logo", { method: "DELETE" });
+            data.settings.logo_url = null;
+            renderLogo();
+            document.querySelectorAll(".sidebar-brand .brand-mark").forEach((node) => {
+                node.replaceWith(el("span", { class: "brand-mark", "aria-hidden": "true" }, (general.elements.app_name.value || "S").slice(0, 1)));
+            });
+            toast("Logo removed.");
+        } catch (error) { toastError(error); }
+    });
+
+    async function init() {
+        data = await api("/api/admin/settings");
+        options = data.options;
+        fillSelect(general.elements.theme_mode, options.theme_modes, { label: "label" });
+        fillSelect(general.elements.default_language, options.languages, { label: "label" });
+        fillSelect(general.elements.timezone, options.timezones.map((tz) => ({ id: tz, label: tz.replaceAll("_", " ") })), { label: "label" });
+        fill();
+        setDirty(general, false);
+        setDirty(security, false);
+    }
+    init().catch(toastError);
+</script>
+{% endblock %}

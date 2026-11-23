@@ -1,0 +1,143 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Roles &amp; permissions</h1>
+        <p>A role decides what its users may see and change. Changes apply on their very next click.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="{{ url_for('admin.users') }}">{{ icon("users", 16) }}Users</a>
+        <button class="btn btn-primary" type="button" id="new-role">{{ icon("plus", 16) }}New role</button>
+    </div>
+</div>
+
+<section class="role-grid" id="role-grid" aria-label="Roles"></section>
+
+<template id="role-form">
+    <div class="field-row">
+        <div class="field">
+            <label class="required" for="r-name">Name</label>
+            <input class="input" id="r-name" name="name" maxlength="50" placeholder="e.g. teacher">
+            <p class="hint">Lowercase letters, numbers and underscores.</p>
+        </div>
+        <div class="field">
+            <label for="r-description">Description</label>
+            <input class="input" id="r-description" name="description" maxlength="255">
+        </div>
+    </div>
+    <div class="field">
+        <span class="field-label">Permissions</span>
+        <input type="hidden" name="permissions">
+        <div class="permission-matrix" data-matrix></div>
+        <p class="hint">“Edit” includes “View”. Without “Admin panel access” the role can only use AI Chat and the student dashboard.</p>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, confirmDialog, openFormModal, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    let catalog = [];
+
+    function renderMatrix(container, role) {
+        const selected = new Set(role?.permissions || ["dashboard.view"]);
+        const locked = role?.locked;
+        container.replaceChildren(...catalog.map((group) => el("div", { class: "matrix-row" },
+            el("div", { class: "matrix-label" }, el("strong", {}, group.label), group.hint ? el("small", {}, group.hint) : null),
+            el("div", { class: "matrix-options" }, ...group.permissions.map((p) => {
+                const input = el("input", { type: "checkbox", value: p.code, "data-permission": true });
+                input.checked = locked || selected.has(p.code);
+                input.disabled = Boolean(locked);
+                return el("label", { class: "matrix-option", title: p.description || p.code }, input, p.label);
+            })),
+        )));
+        // Edit (and Security) imply View: keep the read box ticked (and locked) while either is ticked.
+        const sync = () => {
+            if (locked) return;
+            container.querySelectorAll('input[value$=".read"]').forEach((read) => {
+                const module = read.value.slice(0, -".read".length);
+                const needs = [...container.querySelectorAll(`input[value="${module}.write"], input[value="${module}.security"]`)].some((i) => i.checked);
+                if (needs) read.checked = true;
+                read.disabled = needs;
+            });
+        };
+        container.addEventListener("change", sync);
+        sync();
+    }
+
+    function chosen(form) {
+        return [...form.querySelectorAll("[data-permission]")].filter((i) => i.checked).map((i) => i.value);
+    }
+
+    async function edit(role) {
+        const saved = await openFormModal({
+            title: role ? `Edit “${role.label}”` : "New role", template: "#role-form", size: "lg",
+            description: role?.locked ? "The super admin role always has every permission." : undefined,
+            values: role ? { name: role.name, description: role.description } : undefined,
+            submitText: role ? "Save role" : "Create role",
+            onOpen: (form) => {
+                renderMatrix(form.querySelector("[data-matrix]"), role);
+                if (role?.is_system) {
+                    form.elements.name.readOnly = true;
+                    form.elements.name.closest(".field").querySelector(".hint").textContent = "Built-in roles can't be renamed.";
+                }
+            },
+            onSubmit: (data, form) => api(role ? `/api/admin/roles/${role.id}` : "/api/admin/roles", {
+                method: role ? "PUT" : "POST",
+                body: { name: data.name, description: data.description || null, permissions: chosen(form) },
+            }),
+        });
+        if (saved && saved !== true) { toast(role ? "Role saved." : "Role created."); load(); }
+    }
+
+    async function remove(role) {
+        if (role.users) return toastError(new Error(`${role.users} user(s) still have this role. Give them another role first.`));
+        if (!await confirmDialog({ title: `Delete the “${role.label}” role?`, message: "This can't be undone." })) return;
+        try {
+            await api(`/api/admin/roles/${role.id}`, { method: "DELETE" });
+            toast("Role deleted.");
+            load();
+        } catch (error) { toastError(error); }
+    }
+
+    function card(role) {
+        // Admin panel access is shown as a badge, so leave it out of the list.
+        const groups = catalog.filter((g) => g.module !== "dashboard")
+            .map((g) => ({ label: g.label, codes: g.permissions.filter((p) => role.permissions.includes(p.code)) }))
+            .filter((g) => g.codes.length);
+        return el("article", { class: "card role-card" },
+            el("div", { class: "card-header" },
+                el("div", {}, el("h2", {}, role.label), el("p", {}, role.description || (role.is_system ? "Built-in role" : "Custom role"))),
+                role.is_system ? badge("Built-in") : badge("Custom", "info")),
+            el("div", { class: "card-body" },
+                el("div", { class: "role-facts" },
+                    el("a", { class: "card-link", href: `{{ url_for('admin.users') }}?role=${role.id}` }, `${role.users} user${role.users === 1 ? "" : "s"}`),
+                    role.admin_access ? badge("Admin panel", "accent") : badge("AI Chat only")),
+                groups.length
+                    ? el("ul", { class: "role-perms" }, ...groups.map((g) => el("li", {}, el("strong", {}, g.label), ": ",
+                        g.codes.map((p) => p.label.toLowerCase()).join(", "))))
+                    : el("p", { class: "subtle" }, "No admin permissions."),
+            ),
+            el("div", { class: "card-footer" },
+                !role.is_system ? el("button", { class: "btn btn-ghost btn-sm", type: "button", style: "margin-right:auto;color:var(--danger)", onclick: () => remove(role) }, "Delete") : null,
+                el("button", { class: "btn btn-secondary btn-sm", type: "button", onclick: () => edit(role) }, role.locked ? "View" : "Edit permissions")),
+        );
+    }
+
+    async function load() {
+        try {
+            const data = await api("/api/admin/roles");
+            catalog = data.catalog;
+            document.getElementById("role-grid").replaceChildren(...data.roles.map(card));
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("new-role").addEventListener("click", () => edit(null));
+    load();
+</script>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Question categories</h1>
+        <p>Categories group questions in AI Chat. Disabling a category hides all of its questions.</p>
+    </div>
+    {% if can_write %}
+    <div class="page-actions">
+        <button class="btn btn-primary" type="button" id="new-category">{{ icon("plus", 16) }}New category</button>
+    </div>
+    {% endif %}
+</div>
+
+<section class="card" id="categories-table" aria-label="Question categories"></section>
+
+<template id="category-form">
+    <div class="field">
+        <label class="required" for="c-name">Name</label>
+        <input class="input" id="c-name" name="name" maxlength="100" placeholder="e.g. Business">
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="c-slug">Slug</label>
+            <input class="input" id="c-slug" name="slug" maxlength="120" placeholder="Generated from the name">
+            <p class="hint">Short ID used in links. Lowercase letters, numbers and hyphens.</p>
+        </div>
+        <div class="field">
+            <label for="c-order">Display order</label>
+            <input class="input" id="c-order" name="display_order" type="number" min="0" data-type="number" value="0">
+        </div>
+    </div>
+    <div class="field">
+        <label for="c-description">Description</label>
+        <textarea class="textarea" id="c-description" name="description" maxlength="1000" style="min-height: 80px;"></textarea>
+    </div>
+    <div class="field">
+        <span class="field-label">Status</span>
+        <label class="switch"><input type="checkbox" name="is_enabled" checked><span class="switch-track"></span>Enabled (visible in AI Chat)</label>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, openFormModal, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, switchControl } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const fields = (c) => ({ name: c.name, slug: c.slug, description: c.description, display_order: c.display_order, is_enabled: c.is_enabled });
+
+    const table = new DataTable(document.getElementById("categories-table"), {
+        endpoint: "/api/admin/chat/categories",
+        searchPlaceholder: "Search categories…",
+        filters: [{ name: "status", label: "Any status", options: [{ value: "enabled", label: "Enabled" }, { value: "disabled", label: "Disabled" }] }],
+        columns: [
+            { key: "name", label: "Category", render: (c) => el("div", {}, el("div", { class: "cell-primary" }, c.name), el("div", { class: "cell-secondary" }, c.slug)) },
+            { key: "description", label: "Description", className: "cell-wrap" },
+            {
+                key: "question_count", label: "Questions",
+                render: (c) => el("a", { class: "card-link", href: `{{ url_for('admin.questions') }}?category=${c.id}` }, String(c.question_count)),
+            },
+            { key: "display_order", label: "Order" },
+            {
+                key: "is_enabled", label: "Enabled",
+                render: (c) => CAN_WRITE
+                    ? switchControl({
+                        checked: c.is_enabled, label: `Enable ${c.name}`,
+                        onChange: async (value) => {
+                            await api(`/api/admin/chat/categories/${c.id}`, { method: "PUT", body: { ...fields(c), is_enabled: value } });
+                            c.is_enabled = value;
+                            toast(value ? "Category enabled." : "Category disabled. Its questions are hidden in AI Chat.");
+                        },
+                    })
+                    : (c.is_enabled ? badge("Enabled", "success") : badge("Disabled")),
+            },
+        ],
+        rowActions: (c) => CAN_WRITE ? [
+            { label: "Edit", onClick: () => edit(c) },
+            { label: "Delete", danger: true, onClick: () => remove(c) },
+        ] : [],
+        empty: { title: "No categories yet", text: "Create a category before adding questions." },
+    });
+
+    async function edit(category) {
+        const saved = await openFormModal({
+            title: category ? "Edit category" : "New category",
+            template: "#category-form",
+            values: category ? fields(category) : undefined,
+            submitText: category ? "Save" : "Create category",
+            onSubmit: (data) => api(category ? `/api/admin/chat/categories/${category.id}` : "/api/admin/chat/categories",
+                                    { method: category ? "PUT" : "POST", body: data }),
+        });
+        if (saved) { toast(category ? "Category saved." : "Category created."); table.reload(); }
+    }
+
+    async function remove(category) {
+        if (category.question_count) {
+            toastError(new Error(`“${category.name}” still has ${category.question_count} question(s). Move or delete them first.`));
+            return;
+        }
+        if (!await confirmDialog({ title: `Delete “${category.name}”?`, message: "This can't be undone." })) return;
+        try {
+            await api(`/api/admin/chat/categories/${category.id}`, { method: "DELETE" });
+            toast("Category deleted.");
+            table.reload();
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("new-category")?.addEventListener("click", () => edit(null));
+</script>
+{% endblock %}

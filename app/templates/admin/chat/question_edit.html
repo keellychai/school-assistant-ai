@@ -1,0 +1,476 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("chatconfig.write") %}
+
+{% block title %}{{ question.text[:60] }}{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>Edit question</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a class="card-link" href="{{ url_for('admin.questions') }}">← All questions</a>
+        <h1 id="question-title" style="margin-top: 6px;">{{ question.text }}</h1>
+        <p id="question-status"></p>
+    </div>
+</div>
+
+<div class="editor-layout">
+    <div class="stack">
+        <section class="card">
+            <div class="card-header"><div><h2>Question details</h2><p>How the question is shown and matched.</p></div></div>
+            <form id="question-form" novalidate>
+                <fieldset class="card-body" style="border: 0; margin: 0; min-width: 0;" {% if not can_write %}disabled{% endif %}>
+                    <div class="field">
+                        <label class="required" for="q-text">Question</label>
+                        <input class="input" id="q-text" name="text" maxlength="500">
+                    </div>
+                    <div class="field-row">
+                        <div class="field">
+                            <label class="required" for="q-category">Category</label>
+                            <select class="select" id="q-category" name="category_id" data-type="number"></select>
+                        </div>
+                        <div class="field">
+                            <label for="q-order">Display order</label>
+                            <input class="input" id="q-order" name="display_order" type="number" min="0" data-type="number">
+                            <p class="hint">Lower numbers appear first.</p>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="q-keywords">Keywords</label>
+                        <input class="input" id="q-keywords" name="keywords" data-type="list">
+                        <p class="hint">Comma-separated. Used to recognise this question when users type it in their own words.</p>
+                    </div>
+                    <div class="field-row">
+                        <div class="field">
+                            <span class="field-label">Suggested question</span>
+                            <label class="switch"><input type="checkbox" name="is_suggested"><span class="switch-track"></span>Show as a button when chat opens</label>
+                        </div>
+                        <div class="field">
+                            <span class="field-label">Status</span>
+                            <label class="switch"><input type="checkbox" name="is_enabled"><span class="switch-track"></span>Enabled</label>
+                        </div>
+                    </div>
+                </fieldset>
+                {% if can_write %}
+                <div class="card-footer">
+                    <span class="dirty-note" id="details-dirty" hidden>Unsaved changes</span>
+                    <button class="btn btn-primary" type="submit">Save details</button>
+                </div>
+                {% endif %}
+            </form>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h2>Answers</h2>
+                    <p>The enabled answer with the highest priority is the one shown in chat.</p>
+                </div>
+                {% if can_write %}<button class="btn btn-secondary btn-sm" type="button" id="add-answer">{{ icon("plus", 16) }}Add answer</button>{% endif %}
+            </div>
+            <div id="answers"></div>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h2>Follow-up questions</h2>
+                    <p>Shown as buttons after this answer, in this order.</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <ol class="order-list" id="follow-ups"></ol>
+                {% if can_write %}
+                <div class="add-row">
+                    <label class="sr-only" for="follow-up-select">Question to add as a follow-up</label>
+                    <select class="select" id="follow-up-select"></select>
+                    <button class="btn btn-secondary" type="button" id="follow-up-add">Add</button>
+                </div>
+                {% endif %}
+            </div>
+            {% if can_write %}
+            <div class="card-footer">
+                <span class="dirty-note" id="follow-ups-dirty" hidden>Unsaved changes</span>
+                <button class="btn btn-primary" type="button" id="follow-ups-save">Save follow-ups</button>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Chat preview</h2><p>Exactly what users will see.</p></div></div>
+            <div id="preview"></div>
+        </section>
+
+        <section class="card">
+            <div class="card-header"><div><h2>Where it's used</h2></div></div>
+            <div class="card-body" id="usage"></div>
+        </section>
+
+        {% if can_write %}
+        <section class="card danger-zone">
+            <div class="card-header"><div><h2>Delete question</h2><p>Removes it, its answers and its follow-up links.</p></div></div>
+            <div class="card-body"><button class="btn btn-danger" type="button" id="delete-question">Delete question</button></div>
+        </section>
+        {% endif %}
+    </aside>
+</div>
+
+<template id="answer-form">
+    <div class="field">
+        <label class="required" for="a-body">Answer</label>
+        <div class="write-preview">
+            <textarea class="textarea" id="a-body" name="body_markdown" rows="9"
+                      placeholder="**Bold**, *italic*, lists with -, links like [School site](https://example.com)"></textarea>
+            <div class="preview-box prose" data-preview aria-live="polite"><span class="subtle">Preview appears here.</span></div>
+        </div>
+        <p class="hint">Markdown is supported. Use {assistant_name} to insert the assistant's name. Raw HTML is shown as plain text.</p>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="a-template">Template</label>
+            <select class="select" id="a-template" name="template_id" data-type="number"></select>
+            <p class="hint">Wraps the answer in a reusable layout.</p>
+        </div>
+        <div class="field">
+            <label for="a-priority">Priority</label>
+            <input class="input" id="a-priority" name="priority" type="number" min="-1000" max="1000" data-type="number" value="0">
+            <p class="hint">Higher wins when several answers are enabled.</p>
+        </div>
+    </div>
+    <div class="field">
+        <span class="field-label">Links and references</span>
+        <input type="hidden" name="links">
+        <div data-links></div>
+        <button class="btn btn-ghost btn-sm" type="button" data-add-link style="margin-top: 6px; justify-self: start;">+ Add link</button>
+    </div>
+    <div class="field">
+        <span class="field-label">Status</span>
+        <label class="switch"><input type="checkbox" name="is_enabled" checked><span class="switch-track"></span>Enabled</label>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, icon, confirmDialog, debounce, getFormValues, openFormModal, relativeTime, setFormValues,
+             showFieldErrors, clearFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect, move, orderButtons, switchControl, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const QUESTION_ID = {{ question.id }};
+    const API = `/api/admin/chat/questions/${QUESTION_ID}`;
+    const LIST_URL = "{{ url_for('admin.questions') }}";
+
+    const form = document.getElementById("question-form");
+    const guard = unsavedChangesGuard();
+    let question = null;
+    let followUps = [];          // [{id, text, is_enabled}] being edited
+    let allQuestions = [];
+    let templates = [];
+    let detailsDirty = false;
+    let followUpsDirty = false;
+
+    function setDirty(kind, value) {
+        if (kind === "details") detailsDirty = value; else followUpsDirty = value;
+        document.getElementById(`${kind === "details" ? "details" : "follow-ups"}-dirty`)?.toggleAttribute("hidden", !value);
+        guard.set(detailsDirty || followUpsDirty);
+    }
+
+    // ---------- rendering ----------
+
+    function renderHeader() {
+        document.getElementById("question-title").textContent = question.text;
+        document.title = `${question.text.slice(0, 60)} · {{ branding.name }} Admin`;
+        const status = document.getElementById("question-status");
+        status.replaceChildren(...[
+            question.is_enabled ? badge("Enabled", "success") : badge("Disabled"), " ",
+            question.is_suggested ? badge(`Suggested #${question.display_order}`, "accent") : null, " ",
+            el("span", { class: "subtle" }, `${question.category.name} · updated ${relativeTime(question.updated_at)}`),
+        ].filter((node) => node !== null));
+    }
+
+    function renderAnswers() {
+        const box = document.getElementById("answers");
+        if (!question.answers.length) {
+            box.replaceChildren(el("div", { class: "table-state" },
+                el("div", { class: "state-icon" }, icon("alert", 20)),
+                el("strong", {}, "No answer yet"),
+                el("p", {}, "This question won't appear in AI Chat until it has an enabled answer.")));
+            return;
+        }
+        const activeId = question.answers.find((a) => a.is_enabled)?.id;
+        box.replaceChildren(...question.answers.map((answer) => {
+            const body = el("div", { class: "prose" });
+            body.innerHTML = answer.rendered_html; // sanitised on the server (app/services/markdown_render.py)
+            return el("article", { class: `answer-card${answer.is_enabled ? "" : " is-disabled"}` },
+                el("div", { class: "answer-meta" },
+                    answer.id === activeId ? badge("Shown in chat", "success") : (answer.is_enabled ? badge("Enabled") : badge("Disabled")),
+                    badge(`Priority ${answer.priority}`),
+                    answer.template ? badge(`Template: ${answer.template.name}`, "info") : null,
+                    el("span", { class: "spacer" }),
+                    CAN_WRITE ? switchControl({
+                        checked: answer.is_enabled, label: "Answer enabled",
+                        onChange: async (value) => {
+                            await api(`/api/admin/chat/answers/${answer.id}`, { method: "PATCH", body: { is_enabled: value } });
+                            toast(value ? "Answer enabled." : "Answer disabled.");
+                            await load();
+                        },
+                    }) : null,
+                    CAN_WRITE ? el("button", { class: "icon-button", type: "button", "aria-label": "Edit answer", onclick: () => editAnswer(answer) }, icon("edit", 16)) : null,
+                    CAN_WRITE ? el("button", { class: "icon-button", type: "button", "aria-label": "Delete answer", onclick: () => deleteAnswer(answer) }, icon("trash", 16)) : null,
+                ),
+                body,
+                answer.links.length ? el("div", { class: "answer-links" },
+                    ...answer.links.map((l) => el("span", { class: "chip", title: l.url }, icon("link", 12), l.label))) : null,
+            );
+        }));
+    }
+
+    function renderFollowUps() {
+        const list = document.getElementById("follow-ups");
+        if (!followUps.length) {
+            list.replaceChildren(el("li", { class: "subtle" }, "No follow-up questions."));
+        } else {
+            list.replaceChildren(...followUps.map((q, i) => el("li", { class: "order-item" },
+                el("span", { class: "order-index" }, i + 1),
+                el("a", { class: "order-text", href: `${LIST_URL}/${q.id}` }, q.text,
+                    q.is_enabled ? null : el("span", { class: "subtle" }, " (disabled, hidden in chat)")),
+                CAN_WRITE ? orderButtons({
+                    index: i, length: followUps.length,
+                    onMove: (d) => { followUps = move(followUps, i, d); setDirty("followups", true); renderFollowUps(); },
+                    onRemove: () => { followUps.splice(i, 1); setDirty("followups", true); renderFollowUps(); },
+                }) : null,
+            )));
+        }
+        const select = document.getElementById("follow-up-select");
+        if (select) {
+            const taken = new Set([QUESTION_ID, ...followUps.map((q) => q.id)]);
+            fillSelect(select, allQuestions.filter((q) => !taken.has(q.id)), {
+                placeholder: "Choose a question to add…", label: (q) => `${q.text} — ${q.category}`, selected: "",
+            });
+        }
+    }
+
+    function renderPreview() {
+        const { preview } = question;
+        const box = document.getElementById("preview");
+        const nodes = [el("div", { class: "bubble bubble-user" }, question.text)];
+        if (preview.answer_html) {
+            const answer = el("div", { class: "prose" });
+            answer.innerHTML = preview.answer_html; // sanitised on the server
+            nodes.push(el("div", { class: "bubble bubble-bot" }, answer,
+                preview.links.length ? el("div", { class: "bubble-links" },
+                    ...preview.links.map((l) => el("a", { href: l.url, target: l.external ? "_blank" : null, rel: l.external ? "noopener noreferrer" : null }, "↗ " + l.label))) : null));
+        }
+        if (preview.follow_ups.length) {
+            nodes.push(el("div", { class: "followup-chips" }, ...preview.follow_ups.map((q) => el("span", { class: "followup-chip" }, q.text))));
+        }
+        const reasons = [];
+        if (!question.is_enabled) reasons.push("the question is disabled");
+        if (!question.category.is_enabled) reasons.push(`the “${question.category.name}” category is disabled`);
+        if (!question.has_active_answer) reasons.push("it has no enabled answer");
+        box.replaceChildren(el("div", { class: "chat-preview" }, ...nodes));
+        if (reasons.length) {
+            box.append(el("div", { class: "alert alert-error preview-warning" }, `Not shown in AI Chat: ${reasons.join(", ")}.`));
+        }
+    }
+
+    function renderUsage() {
+        const box = document.getElementById("usage");
+        box.replaceChildren(
+            el("p", {}, question.used_in_flows
+                ? `Part of ${question.used_in_flows} conversation flow${question.used_in_flows > 1 ? "s" : ""}.`
+                : "Not part of any conversation flow."),
+            question.follow_up_of.length
+                ? el("div", { style: "margin-top:10px" }, el("p", { class: "muted" }, "Offered as a follow-up after:"),
+                    el("ul", { style: "margin:6px 0 0; padding-left:18px" },
+                        ...question.follow_up_of.map((q) => el("li", {}, el("a", { class: "card-link", href: `${LIST_URL}/${q.id}` }, q.text)))))
+                : el("p", { class: "muted", style: "margin-top:6px" }, "Not used as a follow-up of another question."),
+        );
+    }
+
+    function renderAll() {
+        renderHeader();
+        renderAnswers();
+        renderFollowUps();
+        renderPreview();
+        renderUsage();
+    }
+
+    // ---------- loading ----------
+
+    async function load({ resetForm = false, resetFollowUps = false } = {}) {
+        question = await api(API);
+        if (resetForm || !detailsDirty) {
+            setFormValues(form, question);
+            setDirty("details", false);
+        }
+        if (resetFollowUps || !followUpsDirty) {
+            followUps = question.follow_ups.map((q) => ({ ...q }));
+            setDirty("followups", false);
+        }
+        renderAll();
+    }
+
+    async function init() {
+        const [categories, questions, tpl] = await Promise.all([
+            api("/api/admin/chat/categories/options"),
+            api("/api/admin/chat/questions/options"),
+            api("/api/admin/chat/templates/options"),
+        ]);
+        allQuestions = questions;
+        templates = tpl;
+        fillSelect(form.elements.category_id, categories, { placeholder: "Choose a category…", label: (c) => c.name + (c.is_enabled ? "" : " (hidden)") });
+        await load({ resetForm: true, resetFollowUps: true });
+        if (new URLSearchParams(location.search).has("created")) {
+            toast("Question created.");
+            history.replaceState(null, "", location.pathname);
+        }
+    }
+
+    // ---------- question details ----------
+
+    form.addEventListener("input", () => setDirty("details", true));
+    form.addEventListener("change", () => setDirty("details", true));
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!CAN_WRITE) return;
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            question = await api(API, { method: "PUT", body: getFormValues(form) });
+            setFormValues(form, question);
+            setDirty("details", false);
+            renderAll();
+            toast("Question saved.");
+        } catch (error) {
+            showFieldErrors(form, error.fields || {}, Object.keys(error.fields || {}).length ? "" : error.message);
+        } finally {
+            button.disabled = false; button.classList.remove("is-loading");
+        }
+    });
+
+    // ---------- answers ----------
+
+    function setupAnswerForm(formNode, answer) {
+        fillSelect(formNode.elements.template_id, templates, { placeholder: "No template", selected: answer?.template_id ?? "" });
+
+        const linksBox = formNode.querySelector("[data-links]");
+        const addLinkRow = (link = { label: "", url: "" }) => {
+            const row = el("div", { class: "link-row" },
+                el("input", { class: "input link-label", placeholder: "Label, e.g. School calendar", "aria-label": "Link label", value: link.label, maxlength: 120 }),
+                el("input", { class: "input link-url", placeholder: "https://…", "aria-label": "Link address", value: link.url, maxlength: 2000 }),
+                el("button", { class: "icon-button", type: "button", "aria-label": "Remove link", onclick: () => row.remove() }, icon("trash", 16)),
+            );
+            linksBox.append(row);
+        };
+        (answer?.links || []).forEach(addLinkRow);
+        formNode.querySelector("[data-add-link]").addEventListener("click", () => addLinkRow());
+
+        const textarea = formNode.elements.body_markdown;
+        const previewBox = formNode.querySelector("[data-preview]");
+        const refresh = debounce(async () => {
+            try {
+                const { html } = await api("/api/admin/chat/preview", {
+                    method: "POST",
+                    body: { body_markdown: textarea.value, template_id: getFormValues(formNode).template_id },
+                });
+                previewBox.innerHTML = html || '<span class="subtle">Preview appears here.</span>'; // sanitised on the server
+            } catch { /* preview is best-effort */ }
+        }, 350);
+        textarea.addEventListener("input", refresh);
+        formNode.elements.template_id.addEventListener("change", refresh);
+        refresh();
+    }
+
+    function collectAnswer(values, formNode) {
+        const links = [...formNode.querySelectorAll(".link-row")]
+            .map((row) => ({ label: row.querySelector(".link-label").value.trim(), url: row.querySelector(".link-url").value.trim() }))
+            .filter((l) => l.label || l.url);
+        return { ...values, links };
+    }
+
+    async function addAnswer() {
+        const saved = await openFormModal({
+            title: "Add answer", template: "#answer-form", size: "lg", submitText: "Add answer",
+            onOpen: (f) => setupAnswerForm(f, null),
+            onSubmit: (values, f) => api(`${API}/answers`, { method: "POST", body: collectAnswer(values, f) }),
+        });
+        if (saved) { toast("Answer added."); await load(); }
+    }
+
+    async function editAnswer(answer) {
+        const saved = await openFormModal({
+            title: "Edit answer", template: "#answer-form", size: "lg",
+            values: { body_markdown: answer.body_markdown, priority: answer.priority, is_enabled: answer.is_enabled },
+            onOpen: (f) => setupAnswerForm(f, answer),
+            onSubmit: (values, f) => api(`/api/admin/chat/answers/${answer.id}`, { method: "PUT", body: collectAnswer(values, f) }),
+        });
+        if (saved) { toast("Answer saved."); await load(); }
+    }
+
+    async function deleteAnswer(answer) {
+        const last = question.answers.filter((a) => a.is_enabled).length === 1 && answer.is_enabled;
+        const ok = await confirmDialog({
+            title: "Delete this answer?",
+            message: last ? "This is the only enabled answer, so the question will disappear from AI Chat. This can't be undone."
+                          : "This can't be undone.",
+        });
+        if (!ok) return;
+        try {
+            await api(`/api/admin/chat/answers/${answer.id}`, { method: "DELETE" });
+            toast("Answer deleted.");
+            await load();
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("add-answer")?.addEventListener("click", addAnswer);
+
+    // ---------- follow-ups ----------
+
+    document.getElementById("follow-up-add")?.addEventListener("click", () => {
+        const select = document.getElementById("follow-up-select");
+        const picked = allQuestions.find((q) => q.id === Number(select.value));
+        if (!picked) return select.focus();
+        followUps.push({ id: picked.id, text: picked.text, is_enabled: picked.is_enabled });
+        setDirty("followups", true);
+        renderFollowUps();
+    });
+
+    document.getElementById("follow-ups-save")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            question = await api(`${API}/follow-ups`, { method: "PUT", body: { question_ids: followUps.map((q) => q.id) } });
+            followUps = question.follow_ups.map((q) => ({ ...q }));
+            setDirty("followups", false);
+            renderAll();
+            toast("Follow-up questions saved.");
+        } catch (error) { toastError(error); }
+        finally { button.disabled = false; button.classList.remove("is-loading"); }
+    });
+
+    // ---------- delete ----------
+
+    document.getElementById("delete-question")?.addEventListener("click", async () => {
+        const ok = await confirmDialog({
+            title: "Delete this question?",
+            message: `“${question.text}” and its ${question.answers.length} answer(s) will be removed from AI Chat`
+                + (question.used_in_flows ? `, and removed from ${question.used_in_flows} conversation flow(s)` : "")
+                + ". This can't be undone.",
+        });
+        if (!ok) return;
+        try {
+            await api(API, { method: "DELETE" });
+            guard.set(false);
+            window.location.href = LIST_URL;
+        } catch (error) { toastError(error); }
+    });
+
+    init().catch(toastError);
+</script>
+{% endblock %}

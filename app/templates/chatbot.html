@@ -1,0 +1,44 @@
+{% extends "app_base.html" %}
+
+{% block title %}AI Assistant{% endblock %}
+{% block breadcrumb %}AI Assistant{% endblock %}
+{% block body_class %}chat-body{% endblock %}
+
+{% block content %}
+<div class="chat-layout" id="chat-layout">
+    <aside class="chat-history" id="chat-history" aria-label="Your conversations" hidden>
+        <div class="chat-history-head">
+            <strong>Conversations</strong>
+            <button class="new-chat-button" type="button" data-new-chat>+ New</button>
+        </div>
+        <ul class="chat-history-list" id="history-list"></ul>
+    </aside>
+
+    <section class="chat-window" aria-label="Chat">
+        <div class="chat-status">
+            <div class="chat-bot-icon" id="bot-avatar" aria-hidden="true"></div>
+            <div>
+                <strong id="bot-name">Assistant</strong>
+                <span><i></i> Online</span>
+            </div>
+            <button type="button" class="clear-button history-toggle" id="history-toggle" aria-controls="chat-history" aria-expanded="false" hidden>History</button>
+            <button type="button" class="clear-button" data-new-chat>New conversation</button>
+        </div>
+
+        <div id="chat-messages" class="chat-messages" aria-live="polite" aria-busy="true">
+            <div class="chat-loading">Loading…</div>
+        </div>
+
+        <form id="chat-form" class="chat-input-area" novalidate>
+            <label class="sr-only" for="question-input">Your question</label>
+            <textarea id="question-input" rows="1" maxlength="500" placeholder="Ask about school information…" autocomplete="off"></textarea>
+            <button type="submit" id="send-button" class="send-button" aria-label="Send">↑</button>
+            <div class="input-disclaimer"><span id="char-count"></span>Answers come from the school's information. Check important details with school staff.</div>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}
