@@ -104,6 +104,12 @@ def answer_templates():
     return render_template("admin/chat/templates.html")
 
 
+@bp.route("/events")
+@permission_required("events.read")
+def events():
+    return render_template("admin/events.html")
+
+
 @bp.route("/assistant")
 @permission_required("assistant.read")
 def assistant():

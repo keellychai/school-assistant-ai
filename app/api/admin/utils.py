@@ -31,6 +31,15 @@ class ApiError(Exception):
         return jsonify(body), self.status
 
 
+class FieldErrors(Exception):
+    """Raise from a pydantic model_validator to report several fields at once:
+    raise FieldErrors({"end": "The end must be after the start."})"""
+
+    def __init__(self, fields):
+        super().__init__("; ".join(f"{k}: {v}" for k, v in fields.items()))
+        self.fields = fields
+
+
 def _int_arg(name, default, minimum=1, maximum=None):
     try:
         value = int(request.args.get(name, default))
@@ -72,6 +81,8 @@ def parse_body(model: type[BaseModel]):
         raise ApiError("Request body must be a JSON object.", 400)
     try:
         return model.model_validate(payload)
+    except FieldErrors as error:
+        raise ApiError("Please correct the highlighted fields.", 422, error.fields) from error
     except ValidationError as error:
         fields = {}
         for issue in error.errors():

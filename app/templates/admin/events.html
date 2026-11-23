@@ -1,0 +1,347 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("events.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Events &amp; schedules</h1>
+        <p>School events, exams and activities. Times are in <strong>{{ timezone }}</strong> time.</p>
+    </div>
+    <div class="page-actions">
+        <div class="segmented" role="tablist" aria-label="View">
+            <button type="button" role="tab" data-view="calendar">{{ icon("calendar", 16) }}Calendar</button>
+            <button type="button" role="tab" data-view="list">{{ icon("menu", 16) }}List</button>
+        </div>
+        {% if can_write %}
+        <button class="btn btn-primary" type="button" id="new-event">{{ icon("plus", 16) }}New event</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="alert alert-info" id="needs-update" hidden></div>
+
+<section class="card" id="calendar-view" hidden></section>
+
+<section id="list-view" hidden>
+    <div class="card" id="events-table" aria-label="Events"></div>
+</section>
+
+<template id="event-form">
+    <div class="field">
+        <label class="required" for="e-title">Title</label>
+        <input class="input" id="e-title" name="title" maxlength="200" placeholder="e.g. Ujian Matematika Kelas X">
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="e-category">Category</label>
+            <input class="input" id="e-category" name="category" list="event-categories" maxlength="50" placeholder="e.g. exam">
+            <datalist id="event-categories"></datalist>
+        </div>
+        <div class="field">
+            <label for="e-status">Status</label>
+            <select class="select" id="e-status" name="status">
+                <option value="upcoming">Upcoming</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+    </div>
+    <div class="field">
+        <label class="switch"><input type="checkbox" name="all_day" data-all-day><span class="switch-track"></span>All-day event</label>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label class="required" for="e-start">Starts</label>
+            <input class="input" id="e-start" name="start" type="datetime-local">
+        </div>
+        <div class="field">
+            <label for="e-end">Ends</label>
+            <input class="input" id="e-end" name="end" type="datetime-local">
+            <p class="hint">Optional.</p>
+        </div>
+    </div>
+    <div class="field">
+        <label for="e-location">Location</label>
+        <input class="input" id="e-location" name="location" maxlength="200" placeholder="e.g. Ruang kelas masing-masing">
+    </div>
+    <div class="field">
+        <label for="e-description">Description</label>
+        <textarea class="textarea" id="e-description" name="description" maxlength="5000" style="min-height: 90px;"></textarea>
+    </div>
+    <div class="field">
+        <span class="field-label">Reminders</span>
+        <input type="hidden" name="reminders">
+        <div data-reminders></div>
+        <button class="btn btn-ghost btn-sm" type="button" data-add-reminder style="justify-self: start;">+ Add reminder</button>
+        <p class="hint">Up to 5. Reminders are sent by the Notifications module.</p>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { MonthCalendar, currentMonth } from "{{ url_for('static', filename='admin/js/calendar.js') }}";
+    import { el, icon, confirmDialog, formatDateTime, openFormModal, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const TIMEZONE = document.body.dataset.timezone;
+    const STATUS = {
+        upcoming: ["Upcoming", "accent"], ongoing: ["Ongoing", "success"],
+        completed: ["Completed", ""], cancelled: ["Cancelled", "danger"],
+    };
+    const REMINDER_PRESETS = [
+        [0, "At the start time"], [15, "15 minutes before"], [30, "30 minutes before"], [60, "1 hour before"],
+        [120, "2 hours before"], [1440, "1 day before"], [2880, "2 days before"], [10080, "1 week before"],
+    ];
+    let categories = [];
+
+    // ---------- URL state (view + month; the table manages its own keys) ----------
+
+    const params = () => new URLSearchParams(location.search);
+    function setParam(key, value) {
+        const p = params();
+        value ? p.set(key, value) : p.delete(key);
+        history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : ""));
+    }
+
+    // ---------- formatting ----------
+
+    function whenText(e) {
+        const day = (d) => formatDateTime(d + "T12:00:00Z", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+        if (e.all_day) {
+            return e.start_date === e.end_date ? `${day(e.start_date)} · all day` : `${day(e.start_date)} – ${day(e.end_date)}`;
+        }
+        const range = e.end_time ? `${e.start_time}–${e.end_time}` : e.start_time;
+        return e.start_date === e.end_date || !e.end
+            ? `${day(e.start_date)} · ${range}`
+            : `${day(e.start_date)} ${e.start_time} – ${day(e.end_date)} ${e.end_time}`;
+    }
+
+    function statusBadge(e) {
+        const [label, variant] = STATUS[e.status];
+        return el("span", {}, badge(label, variant),
+            e.needs_status_update ? el("span", { class: "badge badge-warning", title: "The time has passed but the status wasn't updated." }, "Check status") : null);
+    }
+
+    // ---------- list view ----------
+
+    const dateFrom = el("input", { class: "input", type: "date", "aria-label": "From date" });
+    const dateTo = el("input", { class: "input", type: "date", "aria-label": "To date" });
+    dateFrom.value = params().get("from") || "";
+    dateTo.value = params().get("to") || "";
+    const onDates = () => { setParam("from", dateFrom.value); setParam("to", dateTo.value); table?.reload(); };
+    dateFrom.addEventListener("change", onDates);
+    dateTo.addEventListener("change", onDates);
+
+    let table = null;
+    function ensureTable() {
+        if (table) return table;
+        table = new DataTable(document.getElementById("events-table"), {
+            endpoint: "/api/admin/events",
+            searchPlaceholder: "Search title, location, description…",
+            filters: [
+                { name: "when", label: "Any time", options: [
+                    { value: "upcoming", label: "Upcoming" }, { value: "today", label: "Today" },
+                    { value: "week", label: "Next 7 days" }, { value: "past", label: "Past" }] },
+                { name: "status", label: "Any status", options: Object.entries(STATUS).map(([value, [label]]) => ({ value, label })) },
+                { name: "category", label: "Any category" },
+                { name: "needs_update", label: "All events", options: [{ value: "yes", label: "Status needs checking" }] },
+            ],
+            toolbarExtra: el("div", { class: "date-range" }, dateFrom, el("span", { class: "subtle" }, "to"), dateTo),
+            extraParams: () => ({ from: dateFrom.value, to: dateTo.value }),
+            columns: [
+                { key: "title", label: "Event", className: "cell-main",
+                  render: (e) => el("div", {}, el("button", { class: "link-button cell-primary", type: "button", onclick: () => openEvent(e) }, e.title),
+                      e.location ? el("div", { class: "cell-secondary" }, e.location) : null) },
+                { key: "when", label: "When", render: (e) => el("span", { class: "nowrap" }, whenText(e)) },
+                { key: "category", label: "Category", render: (e) => badge(e.category) },
+                { key: "status", label: "Status", render: statusBadge },
+                { key: "reminders", label: "Reminders", render: (e) => e.reminders.length ? `${e.reminders.length}` : "—" },
+            ],
+            rowActions: (e) => CAN_WRITE ? [
+                { label: "Edit", onClick: () => openEvent(e) },
+                ...Object.entries(STATUS).filter(([s]) => s !== e.status)
+                    .map(([s, [label]]) => ({ label: `Mark as ${label.toLowerCase()}`, onClick: () => setStatus(e, s) })),
+                { label: "Duplicate", onClick: () => openEvent(e, { duplicate: true }) },
+                { label: "Delete", danger: true, onClick: () => removeEvent(e) },
+            ] : [{ label: "View", onClick: () => openEvent(e) }],
+            empty: { title: "No events yet", text: CAN_WRITE ? "Create an event, or click a day in the calendar." : "" },
+        });
+        table.setFilterOptions("category", categories);
+        return table;
+    }
+
+    // ---------- calendar view ----------
+
+    let calendar = null;
+    function ensureCalendar() {
+        if (calendar) return calendar;
+        calendar = new MonthCalendar(document.getElementById("calendar-view"), {
+            month: params().get("month") || currentMonth(TIMEZONE),
+            onMonthChange: (month) => setParam("month", month),
+            onEventClick: (e) => openEvent(e),
+            onDayClick: CAN_WRITE ? (date) => openEvent(null, { date }) : null,
+            onMoreClick: (date) => {
+                dateFrom.value = date; dateTo.value = date;
+                setParam("from", date); setParam("to", date);
+                showView("list");
+            },
+        });
+        calendar.reload();
+        return calendar;
+    }
+
+    function showView(view) {
+        setParam("view", view === "calendar" ? "" : view);
+        document.getElementById("calendar-view").hidden = view !== "calendar";
+        document.getElementById("list-view").hidden = view !== "list";
+        document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+        if (view === "calendar") ensureCalendar(); else ensureTable().reload();
+    }
+    document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+
+    function refresh() {
+        calendar?.reload();
+        table?.reload();
+        loadSummary();
+    }
+
+    // ---------- summary banner ----------
+
+    async function loadSummary() {
+        try {
+            const s = await api("/api/admin/events/summary");
+            const box = document.getElementById("needs-update");
+            box.hidden = !s.needs_update;
+            if (s.needs_update) {
+                box.replaceChildren(
+                    `${s.needs_update} event${s.needs_update > 1 ? "s have" : " has"} started or finished but still show${s.needs_update > 1 ? "" : "s"} an earlier status. `,
+                    el("button", { class: "link-button", type: "button", onclick: () => {
+                        const p = params(); p.set("view", "list"); p.set("needs_update", "yes");
+                        location.search = p.toString();
+                    } }, "Review them"));
+            }
+        } catch { /* banner is optional */ }
+    }
+
+    // ---------- form ----------
+
+    function reminderRow(reminder = { offset_minutes: 60, channel: "in_app" }) {
+        const offset = el("select", { class: "select", "aria-label": "When" },
+            ...REMINDER_PRESETS.map(([value, label]) => el("option", { value }, label)));
+        if (!REMINDER_PRESETS.some(([v]) => v === reminder.offset_minutes)) {
+            offset.append(el("option", { value: reminder.offset_minutes }, `${reminder.offset_minutes} minutes before`));
+        }
+        offset.value = String(reminder.offset_minutes);
+        const channel = el("select", { class: "select", "aria-label": "How" },
+            el("option", { value: "in_app" }, "In-app"), el("option", { value: "email" }, "Email"));
+        channel.value = reminder.channel;
+        const row = el("div", { class: "link-row reminder-row" }, offset, channel,
+            el("button", { class: "icon-button", type: "button", "aria-label": "Remove reminder", onclick: () => row.remove() }, icon("trash", 16)));
+        return row;
+    }
+
+    function toAllDayValue(value) { return value ? value.slice(0, 10) : ""; }
+    function toTimedValue(value, fallbackTime = "08:00") { return value ? (value.length === 10 ? `${value}T${fallbackTime}` : value) : ""; }
+
+    function setupForm(form, event) {
+        form.querySelector("#event-categories").replaceChildren(...categories.map((c) => el("option", { value: c })));
+        const allDay = form.elements.all_day;
+        const sync = () => {
+            for (const input of [form.elements.start, form.elements.end]) {
+                const value = input.value;
+                input.type = allDay.checked ? "date" : "datetime-local";
+                input.value = allDay.checked ? toAllDayValue(value) : toTimedValue(value, input === form.elements.end ? "09:00" : "08:00");
+            }
+        };
+        allDay.addEventListener("change", sync);
+        if (event?.all_day) {  // inputs must be date-type before date values are set
+            form.elements.start.type = form.elements.end.type = "date";
+            form.elements.start.value = event.start; form.elements.end.value = event.end || "";
+        }
+        const box = form.querySelector("[data-reminders]");
+        (event?.reminders || []).forEach((r) => box.append(reminderRow(r)));
+        form.querySelector("[data-add-reminder]").addEventListener("click", () => {
+            if (box.children.length >= 5) return toastError(new Error("An event can have at most 5 reminders."));
+            box.append(reminderRow());
+        });
+        if (!CAN_WRITE) form.querySelectorAll("input, select, textarea, button[data-add-reminder]").forEach((n) => { n.disabled = true; });
+    }
+
+    function collect(values, form) {
+        const reminders = [...form.querySelectorAll(".reminder-row")].map((row) => {
+            const [offset, channel] = row.querySelectorAll("select");
+            return { offset_minutes: Number(offset.value), channel: channel.value };
+        });
+        return {
+            title: values.title, category: values.category || "general", status: values.status,
+            all_day: values.all_day, start: values.start, end: values.end || null,
+            location: values.location || null, description: values.description || null, reminders,
+        };
+    }
+
+    async function openEvent(event, { date, duplicate = false } = {}) {
+        const editing = event && !duplicate;
+        const values = event
+            ? { title: duplicate ? `${event.title} (copy)` : event.title, category: event.category, status: duplicate ? "upcoming" : event.status,
+                all_day: event.all_day, start: event.start, end: event.end || "", location: event.location || "", description: event.description || "" }
+            : { status: "upcoming", category: "general", all_day: false, start: date ? `${date}T08:00` : "", end: "" };
+        if (event && !event.all_day) { values.start = event.start; values.end = event.end || ""; }
+
+        const saved = await openFormModal({
+            title: editing ? (CAN_WRITE ? "Edit event" : event.title) : (duplicate ? "Duplicate event" : "New event"),
+            description: editing && event.created_by ? `Created by ${event.created_by}` : undefined,
+            template: "#event-form", size: "lg",
+            values: event?.all_day ? { ...values, start: undefined, end: undefined } : values,
+            submitText: editing ? "Save event" : "Create event",
+            onOpen: (form) => {
+                setupForm(form, event);
+                if (!CAN_WRITE) form.querySelector("button[type=submit]").hidden = true;
+                if (editing && CAN_WRITE) {
+                    form.querySelector(".modal-footer").prepend(el("button", {
+                        class: "btn btn-ghost", type: "button", style: "margin-right:auto; color: var(--danger)",
+                        onclick: async () => { form.closest("dialog").close(); await removeEvent(event); },
+                    }, "Delete"));
+                }
+            },
+            onSubmit: (data, form) => api(editing ? `/api/admin/events/${event.id}` : "/api/admin/events",
+                                          { method: editing ? "PUT" : "POST", body: collect(data, form) }),
+        });
+        if (saved && saved !== true) {
+            toast(editing ? "Event saved." : "Event created.");
+            refresh();
+        }
+    }
+
+    async function setStatus(event, status) {
+        try {
+            await api(`/api/admin/events/${event.id}/status`, { method: "PATCH", body: { status } });
+            toast(`Marked as ${STATUS[status][0].toLowerCase()}.`);
+            refresh();
+        } catch (error) { toastError(error); }
+    }
+
+    async function removeEvent(event) {
+        const extra = event.reminders.length ? ` Its ${event.reminders.length} reminder(s) will be removed too.` : "";
+        if (!await confirmDialog({ title: `Delete “${event.title}”?`, message: `This can't be undone.${extra}` })) return;
+        try {
+            await api(`/api/admin/events/${event.id}`, { method: "DELETE" });
+            toast("Event deleted.");
+            refresh();
+        } catch (error) { toastError(error); }
+    }
+
+    document.getElementById("new-event")?.addEventListener("click", () => openEvent(null));
+
+    // ---------- init ----------
+
+    try { categories = await api("/api/admin/events/categories"); } catch (error) { toastError(error); }
+    showView(params().get("view") === "list" ? "list" : "calendar");
+    loadSummary();
+</script>
+{% endblock %}

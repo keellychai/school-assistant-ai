@@ -127,7 +127,10 @@ export class DataTable {
         this._renderLoading();
         try {
             const data = await api(this.options.endpoint, {
-                params: { q: this.state.q, page: this.state.page, per_page: this.options.perPage, ...this.state.filters },
+                params: {
+                    q: this.state.q, page: this.state.page, per_page: this.options.perPage, ...this.state.filters,
+                    ...(this.options.extraParams?.() || {}),  // page-managed params, e.g. a date range
+                },
                 signal: this.controller.signal,
             });
             this.data = data;
@@ -173,7 +176,8 @@ export class DataTable {
     _render(data) {
         this.table.style.opacity = "";
         if (!data.items.length) {
-            const filtered = this.state.q || Object.values(this.state.filters).some(Boolean);
+            const filtered = this.state.q || Object.values(this.state.filters).some(Boolean)
+                || Object.values(this.options.extraParams?.() || {}).some(Boolean);
             const empty = this.options.empty || {};
             if (filtered) {
                 this._renderState("empty", "No matching results", "Try a different search or clear the filters.", "Clear filters", () => this.clearFilters());

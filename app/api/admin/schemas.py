@@ -7,9 +7,10 @@ errors can be shown next to the right input.
 import re
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from ...services.markdown_render import is_safe_url
+from .utils import FieldErrors
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100)]
 Slug = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
@@ -300,6 +301,125 @@ class AssistantSettingsIn(Strict):
         provider = PROVIDERS.get(info.data.get("ai_provider"))
         if provider and not re.match(provider["model_pattern"], value):
             raise ValueError("Enter a valid model ID for this provider, e.g. claude-opus-5-5.")
+        return value
+
+
+# --- Events ---------------------------------------------------------------------------
+
+EVENT_STATUS_IDS = ("upcoming", "ongoing", "completed", "cancelled")
+CATEGORY_RE = re.compile(r"^[a-z0-9][a-z0-9 \-]{0,48}[a-z0-9]$|^[a-z0-9]$")
+MAX_REMINDER_MINUTES = 30 * 24 * 60
+
+
+class ReminderIn(Strict):
+    offset_minutes: Annotated[int, Field(ge=0, le=MAX_REMINDER_MINUTES)]
+    channel: str = "in_app"
+
+    @field_validator("channel")
+    @classmethod
+    def _channel(cls, value):
+        if value not in ("in_app", "email"):
+            raise ValueError("Choose in-app or email.")
+        return value
+
+
+class EventIn(Strict):
+    """Times are LOCAL wall-clock values (school timezone): 'YYYY-MM-DDTHH:MM',
+    or 'YYYY-MM-DD' when all_day is true. The API converts them to UTC."""
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+    description: str | None = None
+    location: str | None = None
+    category: str = "general"
+    status: str = "upcoming"
+    all_day: bool = False
+    start: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    end: str | None = None
+    reminders: list[ReminderIn] = Field(default_factory=list, max_length=5)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value):
+        return _optional_text(value, 5000)
+
+    @field_validator("location")
+    @classmethod
+    def _location(cls, value):
+        return _optional_text(value, 200)
+
+    @field_validator("category")
+    @classmethod
+    def _category(cls, value):
+        value = " ".join((value or "general").lower().split())
+        if not CATEGORY_RE.match(value):
+            raise ValueError("Use letters, numbers, spaces or hyphens (max 50 characters).")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, value):
+        if value not in EVENT_STATUS_IDS:
+            raise ValueError("Choose a status from the list.")
+        return value
+
+    @field_validator("end")
+    @classmethod
+    def _end(cls, value):
+        return (value or "").strip() or None
+
+    @staticmethod
+    def _parse(value, all_day, field):
+        from datetime import date, datetime
+        try:
+            if all_day:
+                return datetime.combine(date.fromisoformat(value[:10]), datetime.min.time())
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            raise ValueError(f"{field}: enter a valid {'date' if all_day else 'date and time'}.") from None
+        if parsed.tzinfo is not None:
+            raise ValueError(f"{field}: send local time without a timezone offset.")
+        return parsed.replace(second=0, microsecond=0)
+
+    def start_local(self):
+        return self._parse(self.start, self.all_day, "start")
+
+    def end_local(self):
+        return self._parse(self.end, self.all_day, "end") if self.end else None
+
+    @model_validator(mode="after")
+    def _check(self):
+        errors = {}
+        try:
+            start = self.start_local()
+        except ValueError as error:
+            errors["start"] = str(error).split(": ", 1)[1]
+            start = None
+        try:
+            end = self.end_local()
+        except ValueError as error:
+            errors["end"] = str(error).split(": ", 1)[1]
+            end = None
+        if start and end and end < start:
+            errors["end"] = "The end must be after the start."
+        if start and not 2000 <= start.year <= 2100:
+            errors["start"] = "Enter a year between 2000 and 2100."
+        pairs = [(r.offset_minutes, r.channel) for r in self.reminders]
+        if len(set(pairs)) != len(pairs):
+            errors["reminders"] = "The same reminder is listed twice."
+        if errors:
+            # Raised as a dict so parse_body can map each message to its field.
+            raise FieldErrors(errors)
+        return self
+
+
+class EventStatusIn(Strict):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, value):
+        if value not in EVENT_STATUS_IDS:
+            raise ValueError("Choose a status from the list.")
         return value
 
 

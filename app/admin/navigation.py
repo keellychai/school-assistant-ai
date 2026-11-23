@@ -34,7 +34,7 @@ NAVIGATION = (
     )),
     NavSection("Operations", (
         NavItem("events", "/events", "Events", "calendar", "events.read",
-                "Create and manage events and schedules, with calendar and list views.", 6),
+                "Create and manage events and schedules, with calendar and list views."),
         NavItem("notifications", "/notifications", "Notifications", "bell", "notifications.read",
                 "Announcements, scheduled notifications and event reminders.", 7),
     )),
