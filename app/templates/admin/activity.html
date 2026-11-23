@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Activity log</h1>
+        <p>Sign-ins, failed attempts, denied access and administrative changes. Entries can't be edited or deleted.</p>
+    </div>
+</div>
+
+<section class="card" id="activity-table" aria-label="Activity log entries"></section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, formatDateTime, relativeTime, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+
+    const BADGES = {
+        login: "badge-success", logout: "",
+        login_failed: "badge-warning", login_blocked: "badge-warning",
+        account_locked: "badge-danger", permission_denied: "badge-danger",
+        create: "badge-accent", update: "badge-info", delete: "badge-danger",
+    };
+    const label = (value) => (value || "").replaceAll("_", " ");
+
+    const table = new DataTable(document.getElementById("activity-table"), {
+        endpoint: "/api/admin/activity",
+        searchPlaceholder: "Search summary, user, IP…",
+        filters: [
+            { name: "action", label: "All actions" },
+            { name: "entity_type", label: "All record types" },
+        ],
+        columns: [
+            {
+                key: "created_at", label: "When",
+                render: (row) => el("div", {},
+                    el("div", { title: formatDateTime(row.created_at) }, relativeTime(row.created_at)),
+                    el("div", { class: "cell-secondary nowrap" }, formatDateTime(row.created_at))),
+            },
+            {
+                key: "action", label: "Action",
+                render: (row) => el("span", { class: `badge ${BADGES[row.action] ?? ""}` }, label(row.action)),
+            },
+            {
+                key: "actor", label: "User",
+                render: (row) => row.actor
+                    ? el("div", {}, el("div", { class: "cell-primary" }, row.actor.name), el("div", { class: "cell-secondary" }, row.actor.email))
+                    : el("span", { class: "subtle" }, "System / anonymous"),
+            },
+            { key: "summary", label: "Details", className: "cell-wrap" },
+            {
+                key: "entity", label: "Record",
+                render: (row) => row.entity_type ? `${label(row.entity_type)}${row.entity_id ? " #" + row.entity_id : ""}` : "—",
+            },
+            { key: "ip_address", label: "IP address", className: "nowrap" },
+        ],
+        empty: { title: "No activity yet", text: "Sign-ins and changes will be recorded here." },
+    });
+
+    api("/api/admin/activity/facets")
+        .then(({ actions, entity_types }) => {
+            table.setFilterOptions("action", actions.map((a) => ({ value: a, label: label(a) })));
+            table.setFilterOptions("entity_type", entity_types.map((t) => ({ value: t, label: label(t) })));
+        })
+        .catch(toastError);
+</script>
+{% endblock %}

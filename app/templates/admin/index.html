@@ -1,30 +1,127 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Admin | SchoolSync AI</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="dashboard-page">
-    {# Temporary page for Step 2. Step 3 replaces it with the full admin layout. #}
-    <main class="page-content" style="max-width: 720px; margin: 0 auto;">
-        <p class="eyebrow">ADMIN CONTROL PANEL</p>
-        <h1>Welcome, {{ current_user.full_name }}</h1>
-        <p class="muted">Signed in as {{ current_user.email }} · role <strong>{{ current_user.role.name }}</strong></p>
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
 
-        <section class="content-panel">
-            <h2>Your permissions</h2>
-            <ul>
-                {% for code in permissions %}<li><code>{{ code }}</code></li>{% endfor %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Welcome back, {{ current_user.full_name.split(" ")[0] }}</h1>
+        <p>Here's what's happening in {{ branding.name }}.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn btn-secondary" href="{{ url_for('main.chatbot') }}">{{ icon("message", 16) }} Open AI Chat</a>
+    </div>
+</div>
+
+<section class="grid grid-stats" aria-label="Key numbers">
+    {% set cards = [
+        ("Registered users", stats.users, "users", "All accounts"),
+        ("Conversations", stats.conversations, "message", "AI Chat sessions"),
+        ("Scheduled events", stats.events, "calendar", "All events"),
+        ("Upcoming events", stats.upcoming, "clock", "Not started yet"),
+    ] %}
+    {% for label, value, icon_name, hint in cards %}
+        <article class="card stat-card">
+            <div class="stat-icon">{{ icon(icon_name, 20) }}</div>
+            <div>
+                <p class="stat-label">{{ label }}</p>
+                <p class="stat-value">{{ "{:,}".format(value) }}</p>
+                <p class="stat-hint">{{ hint }}</p>
+            </div>
+        </article>
+    {% endfor %}
+</section>
+
+<div class="grid grid-2" style="margin-top: 18px;">
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h2>Upcoming events</h2>
+                <p>Next five scheduled events</p>
+            </div>
+            {% if current_user.has_permission("events.read") %}
+                <a class="card-link" href="{{ url_for('admin.events') }}">View all</a>
+            {% endif %}
+        </div>
+        {% if upcoming_events %}
+            <ul class="list">
+                {% for event in upcoming_events %}
+                    <li class="list-item">
+                        <div class="date-tile" data-local-date="{{ event.start_at.isoformat() }}Z">
+                            <small>{{ event.start_at.strftime("%b") }}</small>
+                            <strong>{{ event.start_at.strftime("%d") }}</strong>
+                        </div>
+                        <div class="list-item-main">
+                            <p class="list-item-title">{{ event.title }}</p>
+                            <p class="list-item-meta">
+                                <time data-local-time="{{ event.start_at.isoformat() }}Z">{{ event.start_at.strftime("%Y-%m-%d %H:%M") }} UTC</time>
+                                {% if event.location %} · {{ event.location }}{% endif %}
+                            </p>
+                        </div>
+                        <span class="badge badge-accent">{{ event.category | title }}</span>
+                    </li>
+                {% endfor %}
             </ul>
-        </section>
+        {% else %}
+            <div class="table-state">
+                <div class="state-icon">{{ icon("calendar", 20) }}</div>
+                <strong>No upcoming events</strong>
+                <p>Events you schedule will appear here.</p>
+            </div>
+        {% endif %}
+    </section>
 
-        <form method="post" action="{{ url_for('auth.logout') }}" style="margin-top: 24px;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="primary-button" type="submit">Sign out</button>
-        </form>
-    </main>
-</body>
-</html>
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h2>Recent activity</h2>
+                <p>Latest sign-ins and changes</p>
+            </div>
+            {% if current_user.has_permission("activity.read") %}
+                <a class="card-link" href="{{ url_for('admin.activity') }}">View log</a>
+            {% endif %}
+        </div>
+        {% if recent_activity and current_user.has_permission("activity.read") %}
+            <ul class="list">
+                {% for log in recent_activity %}
+                    <li class="list-item">
+                        <span class="avatar">{{ ((log.actor.full_name if log.actor else "System") or "S")[:2] | upper }}</span>
+                        <div class="list-item-main">
+                            <p class="list-item-title">{{ log.summary or log.action | replace("_", " ") | capitalize }}</p>
+                            <p class="list-item-meta">
+                                {{ log.actor.full_name if log.actor else "System" }} ·
+                                <time data-relative-time="{{ log.created_at.isoformat() }}Z">{{ log.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</time>
+                            </p>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="table-state">
+                <div class="state-icon">{{ icon("activity", 20) }}</div>
+                <strong>No activity to show</strong>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { formatDateTime, relativeTime } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    // Server renders UTC; convert to the configured timezone in the browser.
+    document.querySelectorAll("[data-local-time]").forEach((node) => {
+        node.textContent = formatDateTime(node.dataset.localTime);
+    });
+    document.querySelectorAll("[data-relative-time]").forEach((node) => {
+        node.title = formatDateTime(node.dataset.relativeTime);
+        node.textContent = relativeTime(node.dataset.relativeTime);
+    });
+    document.querySelectorAll("[data-local-date]").forEach((node) => {
+        const iso = node.dataset.localDate;
+        node.querySelector("small").textContent = formatDateTime(iso, { month: "short" });
+        node.querySelector("strong").textContent = formatDateTime(iso, { day: "2-digit" });
+    });
+</script>
+{% endblock %}
