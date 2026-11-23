@@ -132,3 +132,27 @@ def generate_answer(settings, system_prompt, history, message):
     if not text or text.startswith(NO_ANSWER) or text == NO_ANSWER:
         return None
     return text
+
+
+def test_connection(settings):
+    """Send one tiny request with the saved settings. Returns {"ok", "message", "latency_ms"}.
+    Never includes the key. Costs a few tokens, so it only runs when an admin clicks Test."""
+    import time
+    if not api_key_present(settings.api_key_env_var):
+        return {"ok": False, "message": f"{settings.api_key_env_var} is not set on the server.", "latency_ms": None}
+    anthropic, client = _client(settings)
+    started = time.monotonic()
+    try:
+        response = client.messages.create(
+            model=settings.ai_model, max_tokens=1024, output_config={"effort": "low"},
+            messages=[{"role": "user", "content": "Reply with the single word OK."}],
+        )
+    except anthropic.APIError as error:
+        status = getattr(error, "status_code", None)
+        hints = {401: "The API key was rejected.", 403: "The API key isn't allowed to use this model.",
+                 404: "The model ID wasn't found.", 429: "Rate limited by the provider; try again shortly."}
+        message = hints.get(status) or f"The provider returned an error ({error.__class__.__name__})."
+        log.warning("AI connection test failed: %s", error.__class__.__name__)
+        return {"ok": False, "message": message, "latency_ms": round((time.monotonic() - started) * 1000)}
+    return {"ok": True, "message": f"Connected. {response.model} replied.",
+            "latency_ms": round((time.monotonic() - started) * 1000)}

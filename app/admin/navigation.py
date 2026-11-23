@@ -52,7 +52,7 @@ NAVIGATION = (
         NavItem("knowledge", "/knowledge", "Knowledge base", "book-open", "knowledge.read",
                 "Information the assistant can use to answer questions."),
         NavItem("monitoring", "/conversations", "Conversations", "eye", "monitoring.read",
-                "Conversation history, unanswered and frequent questions.", 12),
+                "Conversation history, unanswered and frequent questions."),
     )),
     NavSection("Administration", (
         NavItem("users", "/users", "Users", "users", "users.read",
@@ -77,6 +77,7 @@ SUBPAGES = {
     "knowledge_edit": "knowledge",
     "knowledge_new": "knowledge",
     "user_detail": "users",
+    "conversation_detail": "monitoring",
 }
 
 

@@ -222,7 +222,7 @@ def test_roles_catalog(admin_client):
     data = admin_client.get(ROLES).get_json()
     assert [g["module"] for g in data["catalog"]][:2] == ["dashboard", "events"]
     super_admin = next(r for r in data["roles"] if r["name"] == "super_admin")
-    assert super_admin["locked"] and len(super_admin["permissions"]) == 19
+    assert super_admin["locked"] and len(super_admin["permissions"]) == 20
 
 
 def test_create_role_edit_implies_view_and_assign(admin_client, app):

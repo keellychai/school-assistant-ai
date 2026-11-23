@@ -49,16 +49,18 @@ def _int_arg(name, default, minimum=1, maximum=None):
     return min(value, maximum) if maximum else value
 
 
-def paginate(stmt, serialize):
-    """Run a SELECT with ?page=&per_page= and return the list contract as a dict."""
+def paginate(stmt, serialize, rows=False):
+    """Run a SELECT with ?page=&per_page= and return the list contract as a dict.
+    rows=True passes whole result rows (for multi-column selects) instead of the first column."""
     page = _int_arg("page", 1)
     per_page = _int_arg("per_page", DEFAULT_PER_PAGE, maximum=MAX_PER_PAGE)
     total = db.session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     pages = max(math.ceil(total / per_page), 1)
     page = min(page, pages)
-    rows = db.session.scalars(stmt.limit(per_page).offset((page - 1) * per_page)).unique().all()
+    query = stmt.limit(per_page).offset((page - 1) * per_page)
+    results = (db.session.execute(query) if rows else db.session.scalars(query)).unique().all()
     return {
-        "items": [serialize(row) for row in rows],
+        "items": [serialize(row) for row in results],
         "page": page,
         "per_page": per_page,
         "total": total,

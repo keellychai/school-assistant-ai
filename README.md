@@ -92,9 +92,19 @@ Students and staff use AI Chat at `/chatbot`. Each message is answered from the 
 4. **Fallback answer**, flagged for review.
 
 Every message and reply is stored (`chat_sessions`, `chat_messages`) with how it was answered.
+Admins review them at **Admin > Conversations** (`monitoring.read`):
+
+- **Overview**: questions per day, how they were answered, most asked questions, most asked questions
+  *without* an answer, and the configured answers and knowledge entries used most.
+- **All conversations**: search and filter every conversation, and open its transcript to see how each
+  answer was chosen.
+- **Needs review**: questions that got the fallback answer. *Answer this question…* turns one into a
+  configured question (`chatconfig.write`) so AI Chat answers it from then on; *Mark as reviewed* needs
+  `monitoring.write`.
 
 To enable AI answers, put the key in `.env` under the variable named in Assistant settings
-(default `ANTHROPIC_API_KEY=...`), restart the server, then switch *AI answers* on. The key is only read
+(default `ANTHROPIC_API_KEY=...`), restart the server, switch *AI answers* on and click **Test connection**
+(it sends one tiny request with the saved settings). The key is only read
 on the server; it is never stored in the database or sent to the browser.
 
 ## Database

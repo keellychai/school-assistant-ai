@@ -57,9 +57,9 @@ def test_content_manager_blocked_from_admin_only_pages(client, make_user, path):
     assert client.get(path).status_code == 403
 
 
-def test_coming_soon_page_names_step_and_permission(admin_client):
-    html = admin_client.get("/admin/conversations").data
-    assert b"step 12" in html and b"monitoring.read" in html
+def test_every_module_is_built(admin_client):
+    assert all(item.planned_step is None for _, item in ALL_ITEMS.values())
+    assert b"Soon" not in admin_client.get("/admin/").data
 
 
 def test_breadcrumb_shows_section_and_page(admin_client):

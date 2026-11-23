@@ -146,7 +146,13 @@
     <aside class="editor-aside">
         <section class="card">
             <div class="card-header"><div><h2>AI status</h2></div><span class="badge" id="status-badge"></span></div>
-            <div class="card-body"><p id="status-message" class="muted"></p></div>
+            <div class="card-body">
+                <p id="status-message" class="muted"></p>
+                {% if can_write %}
+                <button class="btn btn-secondary btn-sm" type="button" id="test-ai" style="margin-top: 12px;">Test connection</button>
+                <p class="hint" id="test-result" role="status" style="margin-top: 8px;"></p>
+                {% endif %}
+            </div>
         </section>
 
         <section class="card">
@@ -380,6 +386,24 @@
             updatePreview();
             toast("Profile image removed.");
         } catch (error) { toastError(error); }
+    });
+
+    // ---------- AI connection test ----------
+
+    $("test-ai")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const result = $("test-result");
+        if (guard.get()) { result.textContent = "Save your changes first: the test uses the saved settings."; return; }
+        button.disabled = true; button.classList.add("is-loading");
+        result.textContent = "Sending a short test message…";
+        try {
+            const data = await api("/api/admin/assistant/test", { method: "POST" });
+            result.textContent = data.ok ? `✓ ${data.message} (${data.latency_ms} ms)` : `✗ ${data.message}`;
+            result.style.color = data.ok ? "var(--success)" : "var(--danger)";
+        } catch (error) {
+            result.textContent = error.message;
+            result.style.color = "var(--danger)";
+        } finally { button.disabled = false; button.classList.remove("is-loading"); }
     });
 
     // ---------- init ----------

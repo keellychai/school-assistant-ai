@@ -1,7 +1,9 @@
 from flask import abort, render_template, request
+from sqlalchemy import select
+
 from ..auth.security import permission_required
 from ..extensions import db
-from ..models import ConfiguredQuestion, ConversationFlow, KnowledgeEntry, User
+from ..models import ChatSession, ConfiguredQuestion, ConversationFlow, KnowledgeEntry, User
 from . import bp
 from .navigation import ALL_ITEMS, nav_lookup, visible_navigation
 
@@ -137,6 +139,19 @@ def flow_edit(flow_id):
 @permission_required("settings.read")
 def settings():
     return render_template("admin/settings.html")
+
+
+@bp.route("/conversations")
+@permission_required("monitoring.read")
+def monitoring():
+    return render_template("admin/conversations.html")
+
+
+@bp.route("/conversations/<public_id>")
+@permission_required("monitoring.read")
+def conversation_detail(public_id):
+    session = db.session.scalar(select(ChatSession).where(ChatSession.public_id == public_id)) or abort(404)
+    return render_template("admin/conversation_detail.html", session=session)
 
 
 @bp.route("/profile")

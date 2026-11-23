@@ -158,3 +158,16 @@ def remove_avatar():
         db.session.commit()
         delete_upload(old)
     return "", 204
+
+
+@bp.post("/assistant/test")
+@permission_required(WRITE)
+def test_ai_connection():
+    """Check the saved provider, model and key with one tiny request (uses a few tokens)."""
+    from ...services import ai_answer
+    settings = AssistantSettings.get()
+    result = ai_answer.test_connection(settings)
+    log_activity("ai_test", settings, summary=("AI connection test passed" if result["ok"] else "AI connection test failed")
+                 + f" ({settings.ai_model})")
+    db.session.commit()
+    return jsonify(result)
