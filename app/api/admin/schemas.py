@@ -218,6 +218,91 @@ class FlowIn(Strict):
         return root
 
 
+# --- Assistant settings ------------------------------------------------------------
+
+class FeaturesIn(Strict):
+    suggested_questions: bool = True
+    follow_up_buttons: bool = True
+    show_sources: bool = True
+    chat_history: bool = True
+    use_knowledge_base: bool = True
+    ai_use_knowledge_context: bool = True
+    ai_history_messages: Annotated[int, Field(ge=0, le=50)] = 10
+
+
+class AssistantSettingsIn(Strict):
+    assistant_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100)]
+    welcome_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    initial_greeting: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] = ""
+    default_language: str
+    tone: str
+    personality: str | None = None
+    fallback_answer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    match_threshold: Annotated[float, Field(ge=0.1, le=1.0)] = 0.6
+    features: FeaturesIn = Field(default_factory=FeaturesIn)
+
+    ai_enabled: bool = False
+    ai_provider: str
+    ai_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    api_key_env_var: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    ai_effort: str = "medium"
+    max_tokens: Annotated[int, Field(ge=1024, le=64000)] = 16000
+
+    @field_validator("default_language")
+    @classmethod
+    def _language(cls, value):
+        from ...services.assistant_config import LANGUAGES
+        if value not in {l["id"] for l in LANGUAGES}:
+            raise ValueError("Choose a supported language.")
+        return value
+
+    @field_validator("tone")
+    @classmethod
+    def _tone(cls, value):
+        from ...services.assistant_config import TONES
+        if value not in {t["id"] for t in TONES}:
+            raise ValueError("Choose a tone from the list.")
+        return value
+
+    @field_validator("personality")
+    @classmethod
+    def _personality(cls, value):
+        return _optional_text(value, 1000)
+
+    @field_validator("ai_provider")
+    @classmethod
+    def _provider(cls, value):
+        from ...services.assistant_config import PROVIDERS
+        if value not in PROVIDERS:
+            raise ValueError("Choose a supported provider.")
+        return value
+
+    @field_validator("ai_effort")
+    @classmethod
+    def _effort(cls, value):
+        from ...services.assistant_config import EFFORT_IDS
+        if value not in EFFORT_IDS:
+            raise ValueError("Choose an effort level from the list.")
+        return value
+
+    @field_validator("api_key_env_var")
+    @classmethod
+    def _key_env(cls, value):
+        from ...services.assistant_config import KEY_ENV_PATTERN
+        if not KEY_ENV_PATTERN.match(value):
+            raise ValueError("Use an environment variable name ending in _API_KEY, e.g. ANTHROPIC_API_KEY.")
+        return value
+
+    @field_validator("ai_model")
+    @classmethod
+    def _model(cls, value, info):
+        from ...services.assistant_config import PROVIDERS
+        provider = PROVIDERS.get(info.data.get("ai_provider"))
+        if provider and not re.match(provider["model_pattern"], value):
+            raise ValueError("Enter a valid model ID for this provider, e.g. claude-opus-5-5.")
+        return value
+
+
 # --- Fallback -------------------------------------------------------------------
 
 class FallbackIn(Strict):

@@ -11,4 +11,4 @@ from ...auth.security import require_admin_access
 bp = Blueprint("admin_api", __name__, url_prefix="/api/admin")
 bp.before_request(require_admin_access)
 
-from . import routes, chat_config  # noqa: E402,F401
+from . import routes, chat_config, assistant  # noqa: E402,F401

@@ -5,7 +5,7 @@ it now reads knowledge from the database, and will be replaced by the full
 chat engine (configured Q&A -> knowledge -> AI -> fallback) in Phase 2.
 """
 
-from flask import jsonify, redirect, render_template, request, url_for
+from flask import abort, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 
 from ..auth.security import home_url_for
@@ -13,6 +13,7 @@ from ..extensions import limiter
 from ..models import AssistantSettings
 from ..services.classifier import predict_category
 from ..services.knowledge_search import search_knowledge
+from ..services.uploads import FILENAME_RE, PUBLIC_KINDS, upload_dir
 from . import bp
 
 MAX_QUESTION_LENGTH = 500
@@ -23,6 +24,17 @@ def index():
     if current_user.is_authenticated:
         return redirect(home_url_for(current_user))
     return redirect(url_for("auth.login"))
+
+
+@bp.route("/media/<kind>/<filename>")
+def media(kind, filename):
+    """Public uploaded images (e.g. the assistant's avatar shown in AI Chat)."""
+    if kind not in PUBLIC_KINDS or not FILENAME_RE.match(filename):
+        abort(404)
+    response = send_from_directory(upload_dir(kind), filename, max_age=3600)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "default-src 'none'"
+    return response
 
 
 @bp.route("/dashboard")

@@ -30,6 +30,20 @@ export async function api(path, { method = "GET", body, params, signal } = {}) {
         options.body = JSON.stringify(body);
     }
 
+    return send(url, options);
+}
+
+/** Upload files: upload("/api/admin/assistant/avatar", { avatar: file }). */
+export async function upload(path, files, { method = "POST" } = {}) {
+    const body = new FormData();
+    for (const [name, file] of Object.entries(files)) body.append(name, file);
+    return send(new URL(path, window.location.origin), {
+        method, body, credentials: "same-origin",
+        headers: { Accept: "application/json", "X-CSRFToken": csrfToken() },
+    });
+}
+
+async function send(url, options) {
     let response;
     try {
         response = await fetch(url, options);

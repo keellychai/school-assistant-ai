@@ -19,9 +19,10 @@ class FreshRequestClient(FlaskClient):
 
 
 @pytest.fixture()
-def app():
+def app(tmp_path):
     app = create_app("testing")
     app.test_client_class = FreshRequestClient
+    app.config["UPLOAD_FOLDER"] = tmp_path / "uploads"  # never write into the real instance/ folder
     with app.app_context():
         db.create_all()
         seed_all()

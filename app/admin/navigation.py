@@ -48,7 +48,7 @@ NAVIGATION = (
         NavItem("answer_templates", "/chat/templates", "Answer templates", "file-text", "chatconfig.read",
                 "Reusable answer templates."),
         NavItem("assistant", "/assistant", "Assistant settings", "zap", "assistant.read",
-                "Name, greeting, tone, fallback answer and AI provider.", 5),
+                "Name, greeting, tone, fallback answer and AI provider."),
         NavItem("knowledge", "/knowledge", "Knowledge base", "book-open", "knowledge.read",
                 "Information the assistant can use to answer questions.", 8),
         NavItem("monitoring", "/conversations", "Conversations", "eye", "monitoring.read",

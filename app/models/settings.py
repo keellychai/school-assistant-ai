@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..extensions import db
-from .base import TimestampMixin, utcnow
+from .base import TimestampMixin, in_list_check, utcnow
 
 DEFAULT_FALLBACK = (
     "Maaf, saya belum menemukan informasi yang sesuai. "
@@ -18,7 +18,7 @@ class AssistantSettings(TimestampMixin, db.Model):
     __tablename__ = "assistant_settings"
     __table_args__ = (
         sa.CheckConstraint("id = 1", name="single_row"),
-        sa.CheckConstraint("temperature >= 0 AND temperature <= 2", name="temperature_range"),
+        in_list_check("ai_effort", ("low", "medium", "high", "xhigh", "max"), "valid_effort"),
         sa.CheckConstraint("max_tokens > 0", name="max_tokens_positive"),
         sa.CheckConstraint("match_threshold >= 0 AND match_threshold <= 1", name="threshold_range"),
     )
@@ -43,11 +43,13 @@ class AssistantSettings(TimestampMixin, db.Model):
     # AI provider. The API key itself is NEVER stored here: only the name of the
     # server-side environment variable that holds it.
     ai_enabled: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
-    ai_provider: Mapped[str | None] = mapped_column(sa.String(50))
-    ai_model: Mapped[str | None] = mapped_column(sa.String(100))
-    api_key_env_var: Mapped[str | None] = mapped_column(sa.String(100))
-    temperature: Mapped[float] = mapped_column(default=0.3, server_default="0.3")
-    max_tokens: Mapped[int] = mapped_column(default=512, server_default="512")
+    ai_provider: Mapped[str | None] = mapped_column(sa.String(50), default="anthropic")
+    ai_model: Mapped[str | None] = mapped_column(sa.String(100), default="claude-opus-5-5")
+    api_key_env_var: Mapped[str | None] = mapped_column(sa.String(100), default="ANTHROPIC_API_KEY")
+    # Current Claude models take an effort level instead of temperature (sampling params are rejected).
+    ai_effort: Mapped[str] = mapped_column(sa.String(10), default="medium", server_default="medium")
+    # Includes the model's thinking, so it must not be set too low or answers get cut off.
+    max_tokens: Mapped[int] = mapped_column(default=16000, server_default="16000")
     # Minimum similarity for a user message to count as a configured-question match.
     match_threshold: Mapped[float] = mapped_column(default=0.6, server_default="0.6")
     features: Mapped[dict] = mapped_column(sa.JSON, default=dict)
