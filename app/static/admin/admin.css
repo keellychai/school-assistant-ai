@@ -754,6 +754,38 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     background: var(--surface-2); border: 1px solid var(--border); white-space: pre-wrap; font: 12.5px/1.55 var(--font-body);
 }
 
+/* ---------- Users & roles ---------- */
+
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.badge-stack { display: flex; flex-wrap: wrap; gap: 4px; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; }
+.radio-row input { accent-color: var(--accent); }
+.secret-box { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); }
+.secret-value { flex: 1; font-size: 17px; font-weight: 700; letter-spacing: 0.04em; user-select: all; overflow-wrap: anywhere; }
+.profile-head { display: flex; align-items: center; gap: 16px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+.facts dt { color: var(--text-3); }
+.facts dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.action-stack { display: grid; gap: 8px; margin-top: 16px; }
+.action-stack:empty { display: none; }
+
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+.role-card { display: flex; flex-direction: column; }
+.role-card .card-body { flex: 1; }
+.role-facts { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.role-perms { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 13px; display: grid; gap: 3px; }
+.role-perms strong { color: var(--text); font-weight: 600; }
+
+.permission-matrix { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.matrix-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; }
+.matrix-row + .matrix-row { border-top: 1px solid var(--border); }
+.matrix-label strong { display: block; font-size: 13.5px; }
+.matrix-label small { color: var(--text-3); font-size: 12px; }
+.matrix-options { display: flex; gap: 14px; }
+.matrix-option { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 13px; cursor: pointer; }
+.matrix-option input { accent-color: var(--accent); width: 16px; height: 16px; }
+.matrix-option:has(input:disabled) { color: var(--text-3); cursor: default; }
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1180px) {
@@ -788,6 +820,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     .page-actions, .page-actions .btn { width: 100%; }
     .field-row { grid-template-columns: minmax(0, 1fr); }
     .write-preview { grid-template-columns: minmax(0, 1fr); }
+    .matrix-row { grid-template-columns: minmax(0, 1fr); }
+    .role-grid { grid-template-columns: minmax(0, 1fr); }
     .calendar-day { min-height: 64px; padding: 3px; }
     .calendar-chip .chip-time { display: none; }
     .calendar-chip { padding: 1px 3px; font-size: 10.5px; }

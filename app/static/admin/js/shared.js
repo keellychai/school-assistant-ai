@@ -58,6 +58,38 @@ export function orderButtons({ index, length, onMove, onRemove, removeLabel = "R
     );
 }
 
+/** Show a generated password once, with a copy button. Resolves when closed. */
+export function revealPassword({ email, password, title = "Temporary password" }) {
+    return new Promise((resolve) => {
+        const code = el("code", { class: "secret-value" }, password);
+        const copy = el("button", { class: "btn btn-secondary btn-sm", type: "button" }, "Copy");
+        copy.addEventListener("click", async () => {
+            try { await navigator.clipboard.writeText(password); copy.textContent = "Copied"; }
+            catch { copy.textContent = "Select and copy it manually"; }
+        });
+        const done = el("button", { class: "btn btn-primary", type: "button" }, "I've saved it");
+        const dialog = el("dialog", { class: "modal modal-sm", "aria-labelledby": "secret-title" },
+            el("div", { class: "modal-header" }, el("div", {}, el("h2", { id: "secret-title" }, title),
+                el("p", {}, `For ${email}. Give it to them securely.`))),
+            el("div", { class: "modal-body" },
+                el("div", { class: "secret-box" }, code, copy),
+                el("p", { class: "alert alert-info", style: "margin: 14px 0 0" },
+                    "It won't be shown again. Ask them to change it after signing in.")),
+            el("div", { class: "modal-footer" }, done));
+        done.addEventListener("click", () => dialog.close());
+        dialog.addEventListener("close", () => { dialog.remove(); resolve(); });
+        document.body.append(dialog);
+        dialog.showModal();
+        copy.focus();
+    });
+}
+
+/** Two-letter initials for an avatar. */
+export function initials(name) {
+    const parts = (name || "?").trim().split(/\s+/);
+    return ((parts[0]?.[0] || "") + (parts.length > 1 ? parts.at(-1)[0] : parts[0]?.[1] || "")).toUpperCase();
+}
+
 /** Warn before leaving the page with unsaved changes. Returns { set(dirty), get() }. */
 export function unsavedChangesGuard() {
     let dirty = false;

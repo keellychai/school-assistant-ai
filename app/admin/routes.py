@@ -136,6 +136,25 @@ def knowledge_edit(entry_id):
     return render_template("admin/knowledge_edit.html", entry=entry)
 
 
+@bp.route("/users")
+@permission_required("users.read")
+def users():
+    return render_template("admin/users.html")
+
+
+@bp.route("/users/<int:user_id>")
+@permission_required("users.read")
+def user_detail(user_id):
+    user = db.session.get(User, user_id) or abort(404)
+    return render_template("admin/user_detail.html", user=user)
+
+
+@bp.route("/roles")
+@permission_required("roles.manage")
+def roles():
+    return render_template("admin/roles.html")
+
+
 @bp.route("/assistant")
 @permission_required("assistant.read")
 def assistant():

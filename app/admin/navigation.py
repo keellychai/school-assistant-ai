@@ -56,9 +56,9 @@ NAVIGATION = (
     )),
     NavSection("Administration", (
         NavItem("users", "/users", "Users", "users", "users.read",
-                "Accounts, profiles, activation and roles.", 9),
+                "Accounts, profiles, activation and roles."),
         NavItem("roles", "/roles", "Roles & permissions", "shield", "roles.manage",
-                "Define roles and what each one may do.", 9),
+                "Define roles and what each one may do."),
         NavItem("settings", "/settings", "System settings", "sliders", "settings.read",
                 "Branding, theme, language, timezone and security.", 10),
         NavItem("activity", "/activity", "Activity log", "activity", "activity.read",
@@ -76,6 +76,7 @@ SUBPAGES = {
     "flow_new": "flows",
     "knowledge_edit": "knowledge",
     "knowledge_new": "knowledge",
+    "user_detail": "users",
 }
 
 

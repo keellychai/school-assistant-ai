@@ -78,7 +78,7 @@ export class DataTable {
         });
 
         this.toolbar = el("div", { class: "toolbar" },
-            el("label", { class: "input-icon" }, icon("search", 16), search),
+            this.options.search === false ? null : el("label", { class: "input-icon" }, icon("search", 16), search),
             ...this.filterSelects,
             el("span", { class: "toolbar-spacer" }),
             this.options.toolbarExtra || null,
@@ -239,7 +239,8 @@ export class DataTable {
         this.state.q = "";
         this.state.page = 1;
         for (const name of this._filterNames()) this.state.filters[name] = "";
-        this.toolbar.querySelector("input[type=search]").value = "";
+        const searchInput = this.toolbar.querySelector("input[type=search]");
+        if (searchInput) searchInput.value = "";
         this.filterSelects.forEach((s) => { s.value = ""; });
         this.load();
     }

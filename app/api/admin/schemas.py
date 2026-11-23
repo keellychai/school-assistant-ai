@@ -562,6 +562,92 @@ class TestMatchIn(Strict):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
+# --- Users & roles -----------------------------------------------------------------------
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ROLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
+FullName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=120)]
+
+
+def _email(value):
+    value = (value or "").strip().lower()
+    if len(value) > 255 or not EMAIL_RE.match(value):
+        raise ValueError("Enter a valid email address.")
+    return value
+
+
+class UserUpdateIn(Strict):
+    full_name: FullName
+    email: str
+    role_id: int | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, value):
+        return _email(value)
+
+    @field_validator("role_id")
+    @classmethod
+    def _role(cls, value):
+        if value is None:
+            raise ValueError("Choose a role.")
+        return value
+
+
+class UserCreateIn(UserUpdateIn):
+    # Leave empty to generate a temporary password (shown once to the admin).
+    password: str | None = None
+    is_active: bool = True
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, value):
+        value = value or None
+        if value is not None and len(value) > 256:
+            raise ValueError("Use at most 256 characters.")
+        return value
+
+
+class UserStatusIn(Strict):
+    is_active: bool
+
+
+class PasswordResetIn(Strict):
+    password: str | None = None  # empty = generate a temporary one
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, value):
+        value = value or None
+        if value is not None and len(value) > 256:
+            raise ValueError("Use at most 256 characters.")
+        return value
+
+
+class RoleIn(Strict):
+    name: str
+    description: str | None = None
+    permissions: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value):
+        value = "_".join((value or "").strip().lower().split())
+        if not ROLE_NAME_RE.match(value):
+            raise ValueError("Use lowercase letters, numbers and underscores, starting with a letter (e.g. teacher).")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value):
+        return _optional_text(value, 255)
+
+    @field_validator("permissions")
+    @classmethod
+    def _unique(cls, value):
+        return sorted(set(value))
+
+
 # --- Fallback -------------------------------------------------------------------
 
 class FallbackIn(Strict):

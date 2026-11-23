@@ -49,6 +49,7 @@ PERMISSIONS = {
     "activity.read": "View activity logs",
 }
 
+SUPER_ADMIN = "super_admin"
 _ALL = set(PERMISSIONS)
 _READS = {p for p in PERMISSIONS if p.endswith(".read")} | {"dashboard.view"}
 
@@ -87,12 +88,17 @@ def seed_roles():
             permissions[code] = Permission(code=code, description=description)
             db.session.add(permissions[code])
 
+    # New built-in roles get their default permissions. Existing roles are left as the
+    # admins configured them (Roles & permissions page), except super_admin, which always
+    # holds every permission, including ones added by newer versions of the app.
     for name, (description, codes) in ROLES.items():
         role = db.session.scalar(select(Role).where(Role.name == name))
         if role is None:
             role = Role(name=name, description=description, is_system=True)
+            role.permissions = [permissions[c] for c in sorted(codes)]
             db.session.add(role)
-        role.permissions = [permissions[c] for c in sorted(codes)]
+        elif name == SUPER_ADMIN:
+            role.permissions = [permissions[c] for c in sorted(PERMISSIONS)]
     db.session.flush()
 
 

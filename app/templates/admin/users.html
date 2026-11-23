@@ -1,0 +1,178 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("users.write") %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Users</h1>
+        <p>Everyone who can sign in: students and staff. Accounts are deactivated rather than deleted, so their history stays.</p>
+    </div>
+    <div class="page-actions">
+        {% if current_user.has_permission("roles.manage") %}
+        <a class="btn btn-secondary" href="{{ url_for('admin.roles') }}">{{ icon("shield", 16) }}Roles &amp; permissions</a>
+        {% endif %}
+        {% if can_write %}
+        <button class="btn btn-primary" type="button" id="new-user">{{ icon("plus", 16) }}New user</button>
+        {% endif %}
+    </div>
+</div>
+
+<p class="delivery-status" id="summary"></p>
+
+<section class="card" id="users-table" aria-label="Users"></section>
+
+<template id="user-form">
+    <div class="field">
+        <label class="required" for="u-name">Full name</label>
+        <input class="input" id="u-name" name="full_name" maxlength="120" autocomplete="off">
+    </div>
+    <div class="field">
+        <label class="required" for="u-email">Email</label>
+        <input class="input" id="u-email" name="email" type="email" maxlength="255" autocomplete="off">
+        <p class="hint">Used to sign in.</p>
+    </div>
+    <div class="field">
+        <label class="required" for="u-role">Role</label>
+        <select class="select" id="u-role" name="role_id" data-type="number"></select>
+        <p class="hint" data-role-hint></p>
+    </div>
+    <div class="field" data-create-only>
+        <span class="field-label">Password</span>
+        <label class="radio-row"><input type="radio" name="password_mode" value="generate" checked> Generate a temporary password</label>
+        <label class="radio-row"><input type="radio" name="password_mode" value="manual"> Set a password now</label>
+        <input class="input" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" hidden style="margin-top: 6px;">
+    </div>
+    <div class="field" data-create-only>
+        <label class="switch"><input type="checkbox" name="is_active" checked><span class="switch-track"></span>Account active (can sign in)</label>
+    </div>
+</template>
+
+<template id="password-form">
+    <p class="muted" style="margin-bottom: 14px;">The user is signed out everywhere and must use the new password.</p>
+    <div class="field">
+        <label class="radio-row"><input type="radio" name="password_mode" value="generate" checked> Generate a temporary password</label>
+        <label class="radio-row"><input type="radio" name="password_mode" value="manual"> Set a password</label>
+        <input class="input" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" hidden style="margin-top: 6px;">
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { DataTable } from "{{ url_for('static', filename='admin/js/data-table.js') }}";
+    import { el, confirmDialog, formatDateTime, openFormModal, relativeTime, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect, initials, revealPassword } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+    import { userActions } from "{{ url_for('static', filename='admin/js/user-actions.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const profileUrl = (id) => `{{ url_for('admin.users') }}/${id}`;
+    let roles = [];
+
+    function statusCell(u) {
+        return el("div", { class: "badge-stack" },
+            u.is_active ? badge("Active", "success") : badge("Inactive"),
+            u.is_locked ? badge("Locked", "danger") : null,
+            !u.last_login_at && u.is_active ? badge("Never signed in", "") : null);
+    }
+
+    async function loadSummary() {
+        try {
+            const s = await api("/api/admin/users/summary");
+            document.getElementById("summary").replaceChildren(...[
+                badge(`${s.active} active`, "success"),
+                s.inactive ? badge(`${s.inactive} inactive`) : null,
+                s.locked ? badge(`${s.locked} locked`, "danger") : null,
+                el("span", { class: "subtle" }, `${s.total} accounts · ${s.signed_in_last_7_days} signed in this week · `
+                    + s.roles.filter((r) => r.users).map((r) => `${r.users} ${r.label}`).join(", ")),
+            ].filter(Boolean));
+        } catch (error) { toastError(error); }
+    }
+
+    const actions = userActions({ onChange: () => { table.reload(); loadSummary(); } });
+
+    const table = new DataTable(document.getElementById("users-table"), {
+        endpoint: "/api/admin/users",
+        searchPlaceholder: "Search name or email…",
+        filters: [
+            { name: "role", label: "All roles" },
+            { name: "status", label: "Any status", options: [
+                { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" },
+                { value: "locked", label: "Locked" }, { value: "never", label: "Never signed in" }] },
+            { name: "access", label: "Everyone", options: [{ value: "admin", label: "Admin panel access" }] },
+        ],
+        columns: [
+            { key: "full_name", label: "User", className: "cell-main",
+              render: (u) => el("div", { class: "user-cell" },
+                  el("span", { class: "avatar" }, initials(u.full_name)),
+                  el("div", {}, el("a", { class: "cell-primary", href: profileUrl(u.id) }, u.full_name,
+                      u.is_you ? el("span", { class: "badge badge-accent", style: "margin-left:6px" }, "You") : null),
+                      el("div", { class: "cell-secondary" }, u.email))) },
+            { key: "role", label: "Role", render: (u) => badge(u.role.label, u.role.admin_access ? "accent" : "") },
+            { key: "status", label: "Status", render: statusCell },
+            { key: "last_login_at", label: "Last sign-in",
+              render: (u) => u.last_login_at ? el("span", { class: "nowrap", title: formatDateTime(u.last_login_at) }, relativeTime(u.last_login_at)) : el("span", { class: "subtle" }, "Never") },
+            { key: "created_at", label: "Created", render: (u) => el("span", { class: "nowrap" }, formatDateTime(u.created_at, { dateStyle: "medium" })) },
+        ],
+        rowActions: (u) => [
+            { label: "View profile", onClick: () => { location.href = profileUrl(u.id); } },
+            ...(CAN_WRITE && u.can_manage ? actions.menu(u, { edit: () => editUser(u) }) : []),
+        ],
+        empty: { title: "No users yet" },
+    });
+
+    async function loadRoles() {
+        roles = await api("/api/admin/users/roles");
+        table.setFilterOptions("role", roles.map((r) => ({ value: r.id, label: r.label })));
+    }
+
+    function setupForm(form, user) {
+        const assignable = roles.filter((r) => r.assignable || r.id === user?.role.id);
+        fillSelect(form.elements.role_id, assignable, { placeholder: "Choose a role…", label: (r) => r.label + (r.admin_access ? " (admin panel)" : ""), selected: user?.role.id ?? "" });
+        const hint = form.querySelector("[data-role-hint]");
+        const syncHint = () => {
+            const role = roles.find((r) => String(r.id) === form.elements.role_id.value);
+            hint.textContent = role ? (role.admin_access ? "Can open the Admin Control Panel." : "Can use AI Chat and the student dashboard, not the admin panel.") : "";
+        };
+        form.elements.role_id.addEventListener("change", syncHint);
+        syncHint();
+        if (user?.is_you) {
+            form.elements.role_id.disabled = true;
+            hint.textContent = "You can't change your own role.";
+        }
+        form.querySelectorAll("[data-create-only]").forEach((n) => { n.hidden = Boolean(user); });
+        const password = form.elements.password;
+        form.querySelectorAll('input[name="password_mode"]').forEach((radio) => radio.addEventListener("change", () => {
+            password.hidden = form.querySelector('input[name="password_mode"]:checked').value !== "manual";
+            if (!password.hidden) password.focus();
+        }));
+    }
+
+    async function editUser(user) {
+        if (!roles.length) await loadRoles();
+        const saved = await openFormModal({
+            title: user ? "Edit user" : "New user", template: "#user-form",
+            values: user ? { full_name: user.full_name, email: user.email } : { is_active: true },
+            submitText: user ? "Save" : "Create user",
+            onOpen: (form) => setupForm(form, user),
+            onSubmit: (data) => {
+                const body = { full_name: data.full_name, email: data.email, role_id: data.role_id ?? user?.role.id ?? null };
+                if (!user) {
+                    body.is_active = data.is_active;
+                    body.password = data.password_mode === "manual" ? data.password : null;
+                }
+                return api(user ? `/api/admin/users/${user.id}` : "/api/admin/users", { method: user ? "PUT" : "POST", body });
+            },
+        });
+        if (!saved || saved === true) return;
+        if (saved.temporary_password) await revealPassword({ email: saved.email, password: saved.temporary_password });
+        toast(user ? "User saved." : `Account created for ${saved.email}.`);
+        table.reload(); loadSummary();
+    }
+
+    document.getElementById("new-user")?.addEventListener("click", () => editUser(null));
+    loadRoles().catch(toastError);
+    loadSummary();
+</script>
+{% endblock %}

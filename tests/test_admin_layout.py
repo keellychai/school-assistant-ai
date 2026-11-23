@@ -58,8 +58,8 @@ def test_content_manager_blocked_from_admin_only_pages(client, make_user, path):
 
 
 def test_coming_soon_page_names_step_and_permission(admin_client):
-    html = admin_client.get("/admin/users").data
-    assert b"step 9" in html and b"users.read" in html
+    html = admin_client.get("/admin/settings").data
+    assert b"step 10" in html and b"settings.read" in html
 
 
 def test_breadcrumb_shows_section_and_page(admin_client):
