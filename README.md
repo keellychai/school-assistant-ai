@@ -69,8 +69,19 @@ Local development uses SQLite at `instance/schoolsync.db`. For Supabase/PostgreS
 `psycopg[binary]` and set `DATABASE_URL` in `.env` to the Supabase connection string, then run
 `flask db upgrade` and `flask seed`.
 
+## Authentication & access control
+
+- Sign in at `/auth/login`. Admins land on `/admin/`, regular users on `/dashboard`.
+- Accounts are created by administrators (`flask create-admin` for now; the User Management module comes later).
+- Roles: `super_admin`, `admin`, `content_manager`, `viewer`, `user` (see `PERMISSIONS`/`ROLES` in `app/seeds.py`).
+- Every `/admin/*` page and `/api/admin/*` endpoint requires an admin-capable account. Individual routes add
+  `@permission_required("module.write")` from `app/auth/security.py`.
+- After 5 wrong passwords (configurable in system settings) an account is locked for 15 minutes.
+- Deactivating a user or changing their password signs them out of every browser immediately.
+- Logins, failures, lockouts, sign-outs and denied access attempts are written to `activity_logs`.
+
 ## Security notes
 
 - Secrets (SECRET_KEY, AI API keys) live only in `.env` / server environment, never in the database or frontend.
 - Passwords are hashed with scrypt (Werkzeug). All POST requests require a CSRF token.
-- `/api/ask` is rate-limited to 30 requests per minute per IP.
+- Login is rate-limited to 10 attempts per minute per IP; `/api/ask` to 30 per minute.

@@ -29,7 +29,7 @@
                 <strong>Need assistance?</strong>
                 <p>Ask about schedules, announcements, and school administration.</p>
             </div>
-            <a class="nav-link logout-link" href="{{ url_for('main.index') }}"><span>↪</span> Back to login</a>
+            {% include 'partials/_account_nav.html' %}
         </div>
     </aside>
 
@@ -37,8 +37,8 @@
         <header class="topbar">
             <div class="breadcrumb">Workspace <span>/</span> AI Assistant</div>
             <div class="user-profile">
-                <div class="avatar">ST</div>
-                <div><strong>Student</strong><span>Prototype account</span></div>
+                <div class="avatar">{{ (current_user.full_name or 'U')[:2] | upper }}</div>
+                <div><strong>{{ current_user.full_name }}</strong><span>{{ current_user.role.name | replace('_', ' ') | title }} account</span></div>
             </div>
         </header>
 

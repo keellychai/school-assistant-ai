@@ -8,8 +8,14 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 INSTANCE_DIR = BASE_DIR / "instance"
+
+# Load .env before the Config classes below read os.environ. (The `flask` CLI loads
+# it on its own, but `python run.py` and scripts don't.) Real env vars take priority.
+load_dotenv(BASE_DIR / ".env")
 
 
 def _database_url():
@@ -45,6 +51,7 @@ class Config:
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_DURATION = timedelta(days=14)
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
 
     # CSRF (Flask-WTF). Token is sent by JS in the X-CSRFToken header.

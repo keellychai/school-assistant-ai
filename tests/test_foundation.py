@@ -141,14 +141,15 @@ def test_deleting_user_keeps_activity_log(app):
 
 # --- Existing pages keep working ------------------------------------------
 
-@pytest.mark.parametrize("path", ["/", "/dashboard", "/chatbot"])
-def test_pages_render(client, path):
-    response = client.get(path)
+@pytest.mark.parametrize("path", ["/dashboard", "/chatbot"])
+def test_pages_render(user_client, path):
+    response = user_client.get(path)
     assert response.status_code == 200
     assert b'name="csrf-token"' in response.data
 
 
-def test_ask_answers_from_database(client):
+def test_ask_answers_from_database(user_client):
+    client = user_client
     response = client.post("/api/ask", json={"question": "Kapan ujian matematika kelas X?"})
     data = response.get_json()
     assert response.status_code == 200
@@ -156,7 +157,8 @@ def test_ask_answers_from_database(client):
     assert data["needs_review"] is False
 
 
-def test_ask_reflects_database_changes(app, client):
+def test_ask_reflects_database_changes(app, user_client):
+    client = user_client
     entry = db.session.scalar(select(KnowledgeEntry).where(KnowledgeEntry.external_ref == "SCH001"))
     entry.content_markdown = "Ujian Matematika dipindah ke 15 Desember 2026."
     db.session.commit()
@@ -164,13 +166,15 @@ def test_ask_reflects_database_changes(app, client):
     assert "15 Desember" in data["answer"]
 
 
-def test_ask_unknown_question_uses_configured_fallback(app, client):
+def test_ask_unknown_question_uses_configured_fallback(app, user_client):
+    client = user_client
     AssistantSettings.get().fallback_answer = "Custom fallback"
     db.session.commit()
     data = client.post("/api/ask", json={"question": "zzz qqq"}).get_json()
     assert data["answer"] == "Custom fallback" and data["needs_review"] is True
 
 
-def test_ask_validates_input(client):
+def test_ask_validates_input(user_client):
+    client = user_client
     assert client.post("/api/ask", json={"question": ""}).status_code == 400
     assert client.post("/api/ask", json={"question": "x" * 501}).status_code == 400

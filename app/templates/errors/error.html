@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ code }} | SchoolSync AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+    <main class="login-container">
+        <section class="login-card" style="grid-column: 1 / -1; text-align: center;">
+            <p class="eyebrow">ERROR {{ code }}</p>
+            <h2>{{ message }}</h2>
+            <p class="muted">
+                {% if code == 403 %}Your account doesn't have access to this page.{% else %}Please go back and try again.{% endif %}
+            </p>
+            <a class="primary-button" href="{{ url_for('main.index') }}" style="display: inline-flex; margin-top: 20px;">Go to home</a>
+        </section>
+    </main>
+</body>
+</html>

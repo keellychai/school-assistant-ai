@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Admin | SchoolSync AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dashboard-page">
+    {# Temporary page for Step 2. Step 3 replaces it with the full admin layout. #}
+    <main class="page-content" style="max-width: 720px; margin: 0 auto;">
+        <p class="eyebrow">ADMIN CONTROL PANEL</p>
+        <h1>Welcome, {{ current_user.full_name }}</h1>
+        <p class="muted">Signed in as {{ current_user.email }} · role <strong>{{ current_user.role.name }}</strong></p>
+
+        <section class="content-panel">
+            <h2>Your permissions</h2>
+            <ul>
+                {% for code in permissions %}<li><code>{{ code }}</code></li>{% endfor %}
+            </ul>
+        </section>
+
+        <form method="post" action="{{ url_for('auth.logout') }}" style="margin-top: 24px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="primary-button" type="submit">Sign out</button>
+        </form>
+    </main>
+</body>
+</html>

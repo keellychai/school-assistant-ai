@@ -205,6 +205,59 @@ h3,
     box-shadow: 0 0 0 3px #4f63df15;
 }
 
+.form-alert {
+    margin-top: 18px;
+    padding: 11px 13px;
+    border-radius: 9px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.form-alert-error {
+    border: 1px solid #f3c7c7;
+    background: #fdf2f2;
+    color: #a42a2a;
+}
+
+.form-alert-success {
+    border: 1px solid #c4e6d1;
+    background: #f1faf4;
+    color: #1d6b3d;
+}
+
+.field-error {
+    margin: 8px 0 0;
+    color: #a42a2a;
+    font-size: 12px;
+}
+
+.login-card .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 20px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.login-card .checkbox-label input {
+    width: auto;
+    margin: 0;
+    accent-color: var(--blue);
+}
+
+.logout-form {
+    margin: 0;
+}
+
+.logout-form button {
+    width: 100%;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+
 .demo-note {
     margin-top: 22px;
     color: var(--muted);

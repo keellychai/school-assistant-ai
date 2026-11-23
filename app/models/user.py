@@ -1,5 +1,6 @@
 """Users, roles and permissions (RBAC)."""
 
+import secrets
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -9,6 +10,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db, login_manager
 from .base import TimestampMixin, utcnow
+
+def _new_session_token():
+    return secrets.token_hex(32)
+
 
 role_permissions = sa.Table(
     "role_permissions",
@@ -61,6 +66,9 @@ class User(UserMixin, TimestampMixin, db.Model):
     last_login_at: Mapped[datetime | None] = mapped_column(sa.DateTime)
     failed_login_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(sa.DateTime)
+    # Stored in the login cookie instead of the numeric id. Rotating it signs the
+    # user out of every browser (including "remember me" cookies).
+    session_token: Mapped[str] = mapped_column(sa.String(64), unique=True, default=_new_session_token)
 
     role: Mapped[Role] = relationship(back_populates="users", lazy="joined")
 
@@ -68,10 +76,18 @@ class User(UserMixin, TimestampMixin, db.Model):
     def _normalize_email(self, _key, value):
         return value.strip().lower()
 
+    def get_id(self):
+        return self.session_token
+
+    def rotate_session_token(self):
+        self.session_token = _new_session_token()
+
     def set_password(self, password):
         if not password or len(password) < 8:
             raise ValueError("Password must be at least 8 characters long.")
         self.password_hash = generate_password_hash(password)  # scrypt with random salt
+        if self.id is not None:  # existing account: end its other sessions
+            self.rotate_session_token()
 
     def check_password(self, password):
         return bool(self.password_hash) and check_password_hash(self.password_hash, password)
@@ -92,6 +108,8 @@ class User(UserMixin, TimestampMixin, db.Model):
 
 
 @login_manager.user_loader
-def load_user(user_id):
-    user = db.session.get(User, int(user_id))
+def load_user(session_token):
+    if not session_token:
+        return None
+    user = db.session.scalar(sa.select(User).where(User.session_token == session_token))
     return user if user and user.is_active else None

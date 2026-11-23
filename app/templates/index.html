@@ -29,31 +29,35 @@
             <h2>Sign in to continue</h2>
             <p class="muted">Access your school information dashboard.</p>
 
-            <div class="form-group">
-                <label for="studentName">Student name</label>
-                <input
-                    type="text"
-                    id="studentName"
-                    name="studentName"
-                    placeholder="Enter your name"
-                    required
-                >
-            </div>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <div class="form-alert form-alert-{{ category }}" role="alert">{{ message }}</div>
+                {% endfor %}
+            {% endwith %}
 
-            <form id="loginForm">
+            <form method="post" action="{{ url_for('auth.login', next=next_path) if next_path else url_for('auth.login') }}" novalidate>
+                {{ form.hidden_tag() }}
+
                 <label for="email">Email address</label>
-                <input id="email" type="email" placeholder="student@school.edu" required>
+                {{ form.email(id="email", placeholder="student@school.edu", autocomplete="username", required=true, autofocus=true) }}
 
                 <label for="password">Password</label>
-                <input id="password" type="password" placeholder="Enter your password" required>
+                {{ form.password(id="password", placeholder="Enter your password", autocomplete="current-password", required=true) }}
+                {% if form.email.errors or form.password.errors %}
+                    <p class="field-error">Please enter your email and password.</p>
+                {% endif %}
+
+                <label class="checkbox-label" for="remember">
+                    {{ form.remember(id="remember") }} Keep me signed in
+                </label>
 
                 <button class="primary-button full-button" type="submit">
-                    Continue to dashboard <span>→</span>
+                    Sign in <span>→</span>
                 </button>
             </form>
 
             <p class="demo-note">
-                Prototype mode: authentication is not enabled yet.
+                Accounts are created by an administrator.
             </p>
         </section>
     </main>

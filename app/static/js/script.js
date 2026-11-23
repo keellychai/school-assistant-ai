@@ -1,40 +1,5 @@
 
 document.addEventListener("DOMContentLoaded", () => {
-    const loginForm = document.getElementById("loginForm");
-
-    if (loginForm) {
-        loginForm.addEventListener("submit", (event) => {
-            event.preventDefault();
-
-            if (loginForm.reportValidity()) {
-                const studentNameInput = document.getElementById("studentName");
-
-                if (!studentNameInput) {
-                    alert("Student name input was not found.");
-                    return;
-                }
-
-                const studentName = studentNameInput.value.trim();
-
-                if (!studentName) {
-                    alert("Please enter your student name.");
-                    studentNameInput.focus();
-                    return;
-                }
-
-                sessionStorage.setItem("studentName", studentName);
-                window.location.href = "/dashboard";
-            }
-        });
-    }
-
-    const dashboardStudentName = document.getElementById("dashboardStudentName");
-
-    if (dashboardStudentName) {
-        dashboardStudentName.textContent =
-            sessionStorage.getItem("studentName") || "Student";
-    }
-
     const demoChatButton = document.getElementById("demoChatButton");
 
     if (demoChatButton) {
@@ -141,6 +106,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 body: JSON.stringify({ question })
             });
+
+            if (response.status === 401) {
+                window.location.href = "/auth/login?next=" + encodeURIComponent(window.location.pathname);
+                return;
+            }
 
             const result = await response.json();
 

@@ -5,8 +5,10 @@ it now reads knowledge from the database, and will be replaced by the full
 chat engine (configured Q&A -> knowledge -> AI -> fallback) in Phase 2.
 """
 
-from flask import jsonify, render_template, request
+from flask import jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 
+from ..auth.security import home_url_for
 from ..extensions import limiter
 from ..models import AssistantSettings
 from ..services.classifier import predict_category
@@ -18,20 +20,25 @@ MAX_QUESTION_LENGTH = 500
 
 @bp.route("/")
 def index():
-    return render_template("index.html")
+    if current_user.is_authenticated:
+        return redirect(home_url_for(current_user))
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/dashboard")
+@login_required
 def dashboard():
     return render_template("dashboard.html")
 
 
 @bp.route("/chatbot")
+@login_required
 def chatbot():
     return render_template("chatbot.html")
 
 
 @bp.route("/api/ask", methods=["POST"])
+@login_required
 @limiter.limit("30 per minute")
 def ask():
     data = request.get_json(silent=True) or {}

@@ -40,9 +40,7 @@
                 <a href="#assistant">Ask SchoolSync →</a>
             </div>
 
-            <a class="nav-link logout-link" href="{{ url_for('main.index') }}">
-                <span>↪</span> Back to login
-            </a>
+            {% include 'partials/_account_nav.html' %}
         </div>
     </aside>
 
@@ -51,10 +49,10 @@
             <div class="breadcrumb">Workspace <span>/</span> Dashboard</div>
 
             <div class="user-profile">
-                <div class="avatar" id="studentAvatar">ST</div>
+                <div class="avatar">{{ (current_user.full_name or 'U')[:2] | upper }}</div>
                 <div>
-                    <strong id="studentProfileName">Student</strong>
-                    <span>Student account</span>
+                    <strong>{{ current_user.full_name }}</strong>
+                    <span>{{ current_user.role.name | replace('_', ' ') | title }} account</span>
                 </div>
             </div>
         </header>
@@ -65,7 +63,7 @@
                     <p class="eyebrow">STUDENT WORKSPACE</p>
                     <h1>
                         Good day,
-                        <span id="dashboardStudentName">Student</span>
+                        <span>{{ current_user.full_name }}</span>
                         <span>✦</span>
                     </h1>
                     <p class="muted">Everything you need for school, in one place.</p>

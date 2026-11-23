@@ -2,16 +2,13 @@
 
 import os
 
-from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 from .config import CONFIGS, INSTANCE_DIR
 from .extensions import csrf, db, limiter, login_manager, migrate
 
 
 def create_app(config_name=None):
-    load_dotenv()
-
     config_name = config_name or os.getenv("APP_ENV", "development")
     if config_name not in CONFIGS:
         raise RuntimeError(f"Unknown APP_ENV '{config_name}'. Use one of: {', '.join(CONFIGS)}")
@@ -31,13 +28,20 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db, render_as_batch=True)  # batch mode = ALTER support on SQLite
     login_manager.init_app(app)
+    login_manager.session_protection = "strong"
     csrf.init_app(app)
     limiter.init_app(app)
 
     from . import models  # noqa: F401  (registers every model with SQLAlchemy)
 
     from .main import bp as main_bp
+    from .auth import bp as auth_bp
+    from .admin import bp as admin_bp
+    from .api.admin import bp as admin_api_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(admin_api_bp)
 
     from .cli import register_cli
     register_cli(app)
@@ -61,8 +65,10 @@ def _register_error_handlers(app):
         500: "Internal server error.",
     }.items():
         def handler(error, code=code, message=message):
+            if code == 500:
+                db.session.rollback()
             if wants_json():
                 return jsonify({"error": message}), code
-            return error if code != 500 else (message, 500)
+            return render_template("errors/error.html", code=code, message=message), code
 
         app.register_error_handler(code, handler)
