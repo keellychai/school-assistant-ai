@@ -1,0 +1,297 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon %}
+{% set can_write = current_user.has_permission("knowledge.write") %}
+
+{% block title %}{{ entry.title[:60] if entry else "New knowledge entry" }}{% endblock %}
+{% block breadcrumb_extra %}<span aria-hidden="true">/</span><span>{{ "Edit entry" if entry else "New entry" }}</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a class="card-link" href="{{ url_for('admin.knowledge') }}">← Knowledge base</a>
+        <h1 id="entry-title" style="margin-top: 6px;">{{ entry.title if entry else "New knowledge entry" }}</h1>
+        <p id="entry-meta" class="muted"></p>
+    </div>
+</div>
+
+<form id="entry-form" novalidate>
+<div class="editor-layout">
+    <div class="stack">
+        <section class="card">
+            <div class="card-header"><div><h2>Content</h2><p>What the assistant should know. Write it as you'd want it shown to users.</p></div></div>
+            <fieldset class="card-body" style="border: 0; margin: 0; min-width: 0;" {% if not can_write %}disabled{% endif %}>
+                <div class="field">
+                    <label class="required" for="k-title">Title</label>
+                    <input class="input" id="k-title" name="title" maxlength="200" placeholder="e.g. Biaya studi wisata kelas XI">
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label class="required" for="k-category">Category</label>
+                        <select class="select" id="k-category" name="category_id" data-type="number"></select>
+                    </div>
+                    <div class="field">
+                        <label for="k-ref">Reference code</label>
+                        <input class="input" id="k-ref" name="external_ref" maxlength="50" placeholder="e.g. SCH012" style="text-transform: uppercase;">
+                        <p class="hint">Optional. Shown as the source in chat answers.</p>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="k-keywords">Keywords</label>
+                    <input class="input" id="k-keywords" name="keywords" data-type="list" placeholder="biaya studi wisata, harga study tour">
+                    <p class="hint">Comma-separated words people use when asking about this. Keyword matches count the most.</p>
+                </div>
+                <div class="field">
+                    <label class="required" for="k-content">Information</label>
+                    <div class="write-preview">
+                        <textarea class="textarea" id="k-content" name="content_markdown" rows="10" maxlength="50000"></textarea>
+                        <div class="preview-box prose" id="content-preview" aria-live="polite"><span class="subtle">Preview appears here.</span></div>
+                    </div>
+                    <p class="hint">Markdown is supported. Raw HTML is shown as plain text.</p>
+                </div>
+                <div class="field">
+                    <label for="k-source">Source</label>
+                    <input class="input" id="k-source" name="source_ref" maxlength="500" placeholder="e.g. Surat edaran kepala sekolah No. 12/2026">
+                    <p class="hint">Where this information comes from, so it can be checked later.</p>
+                </div>
+            </fieldset>
+        </section>
+
+        <section class="card" id="document-card">
+            <div class="card-header"><div><h2>Document</h2><p>Attach the original file. Its text is extracted so it can be searched and used by the AI as extra context.</p></div></div>
+            <div class="card-body" id="document-body"></div>
+        </section>
+    </div>
+
+    <aside class="editor-aside">
+        <section class="card">
+            <div class="card-header"><div><h2>Visibility</h2></div><span id="usage-badge"></span></div>
+            <fieldset class="card-body" style="border: 0; margin: 0; min-width: 0; display: grid; gap: 12px;" {% if not can_write %}disabled{% endif %}>
+                <label class="feature-item" style="padding: 0;">
+                    <span class="switch"><input type="checkbox" name="is_published" checked><span class="switch-track"></span></span>
+                    <span><strong>Published</strong><small>Unpublished entries are drafts and never used.</small></span>
+                </label>
+                <label class="feature-item" style="padding: 0; border: 0;">
+                    <span class="switch"><input type="checkbox" name="available_to_ai" checked><span class="switch-track"></span></span>
+                    <span><strong>Available to AI Chat</strong><small>Allow the assistant to answer with this entry.</small></span>
+                </label>
+            </fieldset>
+            {% if can_write %}
+            <div class="card-footer">
+                <span class="dirty-note" id="dirty-note" hidden>Unsaved changes</span>
+                <button class="btn btn-primary" type="submit">{{ "Save entry" if entry else "Create entry" }}</button>
+            </div>
+            {% endif %}
+        </section>
+
+        {% if entry %}
+        <section class="card">
+            <div class="card-header"><div><h2>Try a question</h2><p>Does AI Chat pick this entry?</p></div></div>
+            <div class="card-body">
+                <div class="add-row" style="margin: 0;">
+                    <label class="sr-only" for="try-question">Question</label>
+                    <input class="input" id="try-question" maxlength="500" placeholder="e.g. Berapa biaya studi wisata?" style="flex: 1;">
+                    <button class="btn btn-secondary" type="button" id="try-button">Test</button>
+                </div>
+                <div id="try-result" style="margin-top: 12px;"></div>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if can_write and entry %}
+        <section class="card danger-zone">
+            <div class="card-header"><div><h2>Delete entry</h2><p>AI Chat stops using it. Its document is deleted too.</p></div></div>
+            <div class="card-body"><button class="btn btn-danger" type="button" id="delete-entry">Delete entry</button></div>
+        </section>
+        {% endif %}
+    </aside>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    import { api, upload } from "{{ url_for('static', filename='admin/js/api.js') }}";
+    import { el, icon, clearFieldErrors, confirmDialog, debounce, getFormValues, relativeTime, setFormValues,
+             showFieldErrors, toast, toastError } from "{{ url_for('static', filename='admin/js/ui.js') }}";
+    import { badge, fillSelect, unsavedChangesGuard } from "{{ url_for('static', filename='admin/js/shared.js') }}";
+
+    const CAN_WRITE = {{ "true" if can_write else "false" }};
+    const ENTRY_ID = {{ entry.id if entry else "null" }};
+    const LIST_URL = "{{ url_for('admin.knowledge') }}";
+    const form = document.getElementById("entry-form");
+    const guard = unsavedChangesGuard();
+    let entry = null;
+
+    const size = (bytes) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    const setDirty = (value) => { guard.set(value); document.getElementById("dirty-note")?.toggleAttribute("hidden", !value); };
+
+    function renderMeta() {
+        const meta = document.getElementById("entry-meta");
+        meta.replaceChildren(...[
+            entry.updated_by ? `Updated ${relativeTime(entry.updated_at)} by ${entry.updated_by}` : `Updated ${relativeTime(entry.updated_at)}`,
+            entry.created_by ? ` · created by ${entry.created_by}` : "",
+        ]);
+        const usage = document.getElementById("usage-badge");
+        usage.replaceChildren(entry.used_by_chat ? badge("Used by AI Chat", "success") : badge("Not used by AI Chat", "warning"));
+    }
+
+    // ---------- live preview ----------
+
+    const preview = debounce(async () => {
+        try {
+            const { html } = await api("/api/admin/knowledge/preview", { method: "POST", body: { body_markdown: form.elements.content_markdown.value } });
+            document.getElementById("content-preview").innerHTML = html || '<span class="subtle">Preview appears here.</span>'; // sanitised on the server
+        } catch { /* best effort */ }
+    }, 350);
+    form.elements.content_markdown.addEventListener("input", preview);
+
+    // ---------- document ----------
+
+    function renderDocument() {
+        const body = document.getElementById("document-body");
+        if (!ENTRY_ID) {
+            body.replaceChildren(el("p", { class: "subtle" }, "Create the entry first, then you can attach a document."));
+            return;
+        }
+        const nodes = [];
+        if (entry.document) {
+            nodes.push(el("div", { class: "doc-box" },
+                el("span", { class: "doc-icon" }, entry.document.type.toUpperCase()),
+                el("div", { class: "doc-meta" }, el("strong", {}, entry.document.name),
+                    el("span", { class: "subtle" }, `${size(entry.document.size)} · ${entry.document_text_length.toLocaleString()} characters of text extracted`)),
+                el("a", { class: "btn btn-secondary btn-sm", href: `/api/admin/knowledge/${ENTRY_ID}/document` }, "Download"),
+                CAN_WRITE ? el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: removeDocument }, "Remove") : null,
+            ));
+            if (entry.document_text_length) {
+                nodes.push(el("details", { class: "extracted" },
+                    el("summary", {}, "Extracted text" + (entry.document_text_length > 3000 ? " (first 3,000 characters)" : "")),
+                    el("pre", {}, entry.document_text_preview)));
+            } else {
+                nodes.push(el("p", { class: "alert alert-info", style: "margin-top:12px" },
+                    "No text could be extracted (for example a scanned PDF). The file is kept, but the AI can't read it. Put the key facts in the Information field."));
+            }
+        }
+        if (CAN_WRITE) {
+            const input = el("input", { type: "file", class: "sr-only", id: "doc-file", accept: ".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" });
+            const zone = el("label", { class: "dropzone", for: "doc-file", style: entry.document ? "margin-top:12px" : null },
+                icon("file-text", 22),
+                el("strong", {}, entry.document ? "Replace the document" : "Upload a document"),
+                el("span", { class: "subtle" }, "PDF, Word (.docx), .txt or .md, up to 10 MB. Drop a file here or click to choose."),
+                input);
+            input.addEventListener("change", () => input.files[0] && sendDocument(input.files[0]));
+            zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("is-over"); });
+            zone.addEventListener("dragleave", () => zone.classList.remove("is-over"));
+            zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("is-over"); e.dataTransfer.files[0] && sendDocument(e.dataTransfer.files[0]); });
+            nodes.push(zone);
+        } else if (!entry.document) {
+            nodes.push(el("p", { class: "subtle" }, "No document attached."));
+        }
+        body.replaceChildren(...nodes);
+    }
+
+    async function sendDocument(file) {
+        const body = document.getElementById("document-body");
+        body.classList.add("is-loading");
+        try {
+            entry = await upload(`/api/admin/knowledge/${ENTRY_ID}/document`, { document: file });
+            toast(`“${file.name}” attached.`);
+            renderDocument(); renderMeta();
+        } catch (error) { toastError(error); }
+        finally { body.classList.remove("is-loading"); }
+    }
+
+    async function removeDocument() {
+        if (!await confirmDialog({ title: "Remove the document?", message: `“${entry.document.name}” and its extracted text will be deleted. The entry itself stays.`, confirmText: "Remove" })) return;
+        try {
+            await api(`/api/admin/knowledge/${ENTRY_ID}/document`, { method: "DELETE" });
+            entry = await api(`/api/admin/knowledge/${ENTRY_ID}`);
+            toast("Document removed.");
+            renderDocument(); renderMeta();
+        } catch (error) { toastError(error); }
+    }
+
+    // ---------- save / delete ----------
+
+    form.addEventListener("input", (e) => { if (e.target.name) setDirty(true); });
+    form.addEventListener("change", (e) => { if (e.target.name) setDirty(true); });
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!CAN_WRITE) return;
+        const button = form.querySelector("button[type=submit]");
+        clearFieldErrors(form);
+        button.disabled = true; button.classList.add("is-loading");
+        try {
+            const values = getFormValues(form);
+            const body = { title: values.title, category_id: values.category_id, external_ref: values.external_ref || null,
+                           content_markdown: values.content_markdown, keywords: values.keywords, source_ref: values.source_ref || null,
+                           is_published: values.is_published, available_to_ai: values.available_to_ai };
+            const saved = await api(ENTRY_ID ? `/api/admin/knowledge/${ENTRY_ID}` : "/api/admin/knowledge",
+                                    { method: ENTRY_ID ? "PUT" : "POST", body });
+            setDirty(false);
+            if (!ENTRY_ID) { location.href = `${LIST_URL}/${saved.id}?created=1`; return; }
+            entry = saved;
+            setFormValues(form, entry);
+            document.getElementById("entry-title").textContent = entry.title;
+            renderMeta();
+            toast("Entry saved.");
+        } catch (error) {
+            const fields = error.fields || {};
+            showFieldErrors(form, fields, Object.keys(fields).length ? "Please correct the highlighted fields." : error.message);
+        } finally {
+            button.disabled = false; button.classList.remove("is-loading");
+        }
+    });
+
+    document.getElementById("delete-entry")?.addEventListener("click", async () => {
+        const extra = entry.document ? ` Its document “${entry.document.name}” will be deleted too.` : "";
+        if (!await confirmDialog({ title: `Delete “${entry.title}”?`, message: `AI Chat will stop using it.${extra} This can't be undone.` })) return;
+        try {
+            await api(`/api/admin/knowledge/${ENTRY_ID}`, { method: "DELETE" });
+            setDirty(false);
+            location.href = LIST_URL;
+        } catch (error) { toastError(error); }
+    });
+
+    // ---------- try a question ----------
+
+    async function tryQuestion() {
+        const question = document.getElementById("try-question").value.trim();
+        const box = document.getElementById("try-result");
+        if (!question) return document.getElementById("try-question").focus();
+        try {
+            const r = await api("/api/admin/knowledge/test-match", { method: "POST", body: { question } });
+            const mine = r.candidates.find((c) => c.id === ENTRY_ID);
+            let message, kind;
+            if (r.answer?.id === ENTRY_ID) { message = "Yes, AI Chat would answer with this entry."; kind = "success"; }
+            else if (r.answer) { message = `No, “${r.answer.title}” would be used instead.${mine ? ` This entry scored ${mine.score}.` : ""} Try adding keywords.`; kind = "info"; }
+            else { message = mine ? `Not confidently: this entry scored ${mine.score} (needs ${r.min_score}+). Try adding keywords.` : "No: this entry shares no words with the question. Try adding keywords."; kind = "info"; }
+            if (mine && !mine.used_by_chat) message += " (It's currently hidden from AI Chat.)";
+            box.replaceChildren(el("div", { class: `alert alert-${kind}`, style: "margin:0" }, message));
+        } catch (error) { toastError(error); }
+    }
+    document.getElementById("try-button")?.addEventListener("click", tryQuestion);
+    document.getElementById("try-question")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); tryQuestion(); } });
+
+    // ---------- init ----------
+
+    async function init() {
+        const categories = await api("/api/admin/knowledge/categories/options");
+        fillSelect(form.elements.category_id, categories, { placeholder: "Choose a category…" });
+        if (ENTRY_ID) {
+            entry = await api(`/api/admin/knowledge/${ENTRY_ID}`);
+            setFormValues(form, entry);
+            renderMeta();
+            if (new URLSearchParams(location.search).has("created")) {
+                toast("Entry created. You can attach a document now.");
+                history.replaceState(null, "", location.pathname);
+            }
+        } else {
+            entry = { document: null };
+        }
+        renderDocument();
+        preview();
+        setDirty(false);
+    }
+    init().catch(toastError);
+</script>
+{% endblock %}

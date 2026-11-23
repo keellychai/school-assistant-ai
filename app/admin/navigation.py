@@ -50,7 +50,7 @@ NAVIGATION = (
         NavItem("assistant", "/assistant", "Assistant settings", "zap", "assistant.read",
                 "Name, greeting, tone, fallback answer and AI provider."),
         NavItem("knowledge", "/knowledge", "Knowledge base", "book-open", "knowledge.read",
-                "Information the assistant can use to answer questions.", 8),
+                "Information the assistant can use to answer questions."),
         NavItem("monitoring", "/conversations", "Conversations", "eye", "monitoring.read",
                 "Conversation history, unanswered and frequent questions.", 12),
     )),
@@ -74,6 +74,8 @@ SUBPAGES = {
     "question_edit": "questions",
     "flow_edit": "flows",
     "flow_new": "flows",
+    "knowledge_edit": "knowledge",
+    "knowledge_new": "knowledge",
 }
 
 

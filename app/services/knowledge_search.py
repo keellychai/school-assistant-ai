@@ -34,26 +34,29 @@ def _score(entry, query, query_words, category):
     return score, bool(keyword_matches)
 
 
-def search_knowledge(question, category=None):
+def rank_knowledge(question, category=None, include_unavailable=False):
+    """All entries with a positive score, best first: [(score, has_keyword, entry)]."""
     query = normalize(question)
     query_words = set(query.split())
 
-    entries = db.session.scalars(
-        select(KnowledgeEntry).where(
-            KnowledgeEntry.is_published.is_(True),
-            KnowledgeEntry.available_to_ai.is_(True),
-        )
-    ).all()
+    stmt = select(KnowledgeEntry)
+    if not include_unavailable:
+        stmt = stmt.where(KnowledgeEntry.is_published.is_(True), KnowledgeEntry.available_to_ai.is_(True))
 
     results = []
-    for entry in entries:
+    for entry in db.session.scalars(stmt):
         score, has_keyword = _score(entry, query, query_words, category)
         if score > 0:
             results.append((score, has_keyword, entry))
+    results.sort(key=lambda r: r[0], reverse=True)
+    return results
 
+
+def search_knowledge(question, category=None):
+    """The single best entry to answer with, or None when nothing is a confident match."""
+    results = rank_knowledge(question, category)
     if not results:
         return None
-    results.sort(key=lambda r: r[0], reverse=True)
 
     best_score, best_has_keyword, best = results[0]
     if best_score < MIN_SCORE:

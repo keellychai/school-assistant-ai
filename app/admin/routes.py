@@ -11,6 +11,7 @@ from ..models import (
     ConfiguredQuestion,
     ConversationFlow,
     Event,
+    KnowledgeEntry,
     SystemSetting,
     User,
 )
@@ -114,6 +115,25 @@ def events():
 @permission_required("notifications.read")
 def notifications():
     return render_template("admin/notifications.html")
+
+
+@bp.route("/knowledge")
+@permission_required("knowledge.read")
+def knowledge():
+    return render_template("admin/knowledge.html")
+
+
+@bp.route("/knowledge/new")
+@permission_required("knowledge.write")
+def knowledge_new():
+    return render_template("admin/knowledge_edit.html", entry=None)
+
+
+@bp.route("/knowledge/<int:entry_id>")
+@permission_required("knowledge.read")
+def knowledge_edit(entry_id):
+    entry = db.session.get(KnowledgeEntry, entry_id) or abort(404)
+    return render_template("admin/knowledge_edit.html", entry=entry)
 
 
 @bp.route("/assistant")

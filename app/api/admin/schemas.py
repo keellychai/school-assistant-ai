@@ -22,6 +22,22 @@ MAX_FLOW_DEPTH = 6
 MAX_FLOW_STEPS = 60
 
 
+def clean_keywords(value):
+    """Trim, lower-case and de-duplicate keywords (max 25, 60 characters each)."""
+    cleaned = []
+    for keyword in value:
+        keyword = " ".join(str(keyword).split()).lower()
+        if not keyword:
+            continue
+        if len(keyword) > 60:
+            raise ValueError("Each keyword must be at most 60 characters.")
+        if keyword not in cleaned:
+            cleaned.append(keyword)
+    if len(cleaned) > 25:
+        raise ValueError("Use at most 25 keywords.")
+    return cleaned
+
+
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -89,18 +105,7 @@ class QuestionIn(Strict):
     @field_validator("keywords")
     @classmethod
     def _keywords(cls, value):
-        cleaned = []
-        for keyword in value:
-            keyword = " ".join(str(keyword).split()).lower()
-            if not keyword:
-                continue
-            if len(keyword) > 60:
-                raise ValueError("Each keyword must be at most 60 characters.")
-            if keyword not in cleaned:
-                cleaned.append(keyword)
-        if len(cleaned) > 25:
-            raise ValueError("Use at most 25 keywords.")
-        return cleaned
+        return clean_keywords(value)
 
 
 class QuestionCreate(QuestionIn):
@@ -486,6 +491,75 @@ class NotificationIn(Strict):
         if errors:
             raise FieldErrors(errors)
         return self
+
+
+# --- Knowledge base ------------------------------------------------------------------
+
+REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,49}$")
+
+
+class KnowledgeCategoryIn(Strict):
+    name: Name
+    slug: Slug = ""
+    description: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def _slug(cls, value):
+        value = value.lower()
+        if value and not SLUG_RE.match(value):
+            raise ValueError("Use lowercase letters, numbers and single hyphens (e.g. school-events).")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value):
+        return _optional_text(value, 1000)
+
+
+class KnowledgeEntryIn(Strict):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=200)]
+    category_id: int | None = None
+    external_ref: str | None = None
+    content_markdown: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50000)]
+    keywords: list[str] = Field(default_factory=list)
+    source_ref: str | None = None
+    available_to_ai: bool = True
+    is_published: bool = True
+
+    @field_validator("category_id")
+    @classmethod
+    def _category(cls, value):
+        if value is None:
+            raise ValueError("Choose a category.")
+        return value
+
+    @field_validator("external_ref")
+    @classmethod
+    def _ref(cls, value):
+        value = (value or "").strip() or None
+        if value and not REF_RE.match(value):
+            raise ValueError("Use up to 50 letters, numbers, dots, dashes or underscores (e.g. SCH012).")
+        return value.upper() if value else None
+
+    @field_validator("keywords")
+    @classmethod
+    def _keywords(cls, value):
+        return clean_keywords(value)
+
+    @field_validator("source_ref")
+    @classmethod
+    def _source(cls, value):
+        return _optional_text(value, 500)
+
+
+class KnowledgePatch(Strict):
+    is_published: bool | None = None
+    available_to_ai: bool | None = None
+
+
+class TestMatchIn(Strict):
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
 # --- Fallback -------------------------------------------------------------------

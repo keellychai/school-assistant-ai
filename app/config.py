@@ -63,7 +63,7 @@ class Config:
 
     # Uploads (knowledge documents, avatars)
     UPLOAD_FOLDER = INSTANCE_DIR / "uploads"
-    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
+    MAX_CONTENT_LENGTH = 12 * 1024 * 1024  # 10 MB documents + form overhead
 
     # Legacy text classifier trained by train_model.py
     CLASSIFIER_PATH = BASE_DIR / "models" / "school_assistant_model.joblib"
